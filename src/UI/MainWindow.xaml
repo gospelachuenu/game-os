@@ -1,0 +1,445 @@
+<Window x:Class="UI.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:UI"
+        mc:Ignorable="d"
+        Title="Gaming OS - Dashboard (Windowed Test Build)" Height="680" Width="1280"
+        Background="#06070B"
+        KeyDown="Window_KeyDown">
+    <Window.Resources>
+        <local:PercentToWidthConverter x:Key="PercentToWidthConverter"/>
+        <local:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
+        <local:CountToVisibilityConverter x:Key="CountToVisibilityConverter"/>
+        <local:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+        <local:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter"/>
+        <local:PercentToStarConverter x:Key="PercentToStarConverter"/>
+        <local:PercentToRemainingStarConverter x:Key="PercentToRemainingStarConverter"/>
+
+        <Style x:Key="RailItemStyle" TargetType="Border">
+            <Setter Property="Width" Value="30"/>
+            <Setter Property="Height" Value="30"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Background" Value="#0FFFFFFF"/>
+            <Setter Property="Opacity" Value="1"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsActive}" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource Theme.AccentPrimaryTintBrush}"/>
+                    <Setter Property="BorderBrush" Value="{DynamicResource Theme.AccentPrimaryBrush}"/>
+                    <Setter Property="BorderThickness" Value="1"/>
+                    <DataTrigger.EnterActions>
+                        <BeginStoryboard>
+                            <Storyboard>
+                                <DoubleAnimationUsingKeyFrames Storyboard.TargetProperty="Opacity" Duration="0:0:0.3">
+                                    <EasingDoubleKeyFrame KeyTime="0" Value="0.4"/>
+                                    <EasingDoubleKeyFrame KeyTime="0:0:0.3" Value="1">
+                                        <EasingDoubleKeyFrame.EasingFunction><QuadraticEase EasingMode="EaseOut"/></EasingDoubleKeyFrame.EasingFunction>
+                                    </EasingDoubleKeyFrame>
+                                </DoubleAnimationUsingKeyFrames>
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </DataTrigger.EnterActions>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <!--
+            Focus effect implemented as "unfocused tiles shrink slightly" rather than
+            "focused tile grows" — every tile's LAID-OUT size already reserves the
+            room a grown tile would need, and the resting/default state IS that full
+            size (ScaleX/Y start at 1.0 = full size). Losing focus animates DOWN to
+            0.94 instead. This guarantees no tile ever renders larger than its
+            allocated layout box, so nothing can be clipped by the ScrollViewer/
+            ItemsControl/row containers — there is no overflow to clip in the first
+            place. (The previous "grow on focus" approach kept getting clipped on the
+            left/top/right edges by ancestor containers no amount of margin/padding
+            tweaking could reliably defeat.)
+        -->
+        <Style x:Key="SpotlightCardStyle" TargetType="Border">
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="2.5"/>
+            <Setter Property="Opacity" Value="0.55"/>
+            <Setter Property="Effect">
+                <Setter.Value>
+                    <DropShadowEffect Color="Black" BlurRadius="18" ShadowDepth="4" Opacity="0.5"/>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsFocused}" Value="True">
+                    <Setter Property="BorderBrush" Value="{DynamicResource Theme.AccentPrimaryBrush}"/>
+                    <Setter Property="Opacity" Value="1"/>
+                    <DataTrigger.EnterActions>
+                        <BeginStoryboard>
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetProperty="RenderTransform.ScaleX"
+                                                 To="1.0" Duration="0:0:0.18">
+                                    <DoubleAnimation.EasingFunction><QuadraticEase EasingMode="EaseOut"/></DoubleAnimation.EasingFunction>
+                                </DoubleAnimation>
+                                <DoubleAnimation Storyboard.TargetProperty="RenderTransform.ScaleY"
+                                                 To="1.0" Duration="0:0:0.18">
+                                    <DoubleAnimation.EasingFunction><QuadraticEase EasingMode="EaseOut"/></DoubleAnimation.EasingFunction>
+                                </DoubleAnimation>
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </DataTrigger.EnterActions>
+                    <DataTrigger.ExitActions>
+                        <BeginStoryboard>
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetProperty="RenderTransform.ScaleX"
+                                                 To="0.9" Duration="0:0:0.18"/>
+                                <DoubleAnimation Storyboard.TargetProperty="RenderTransform.ScaleY"
+                                                 To="0.9" Duration="0:0:0.18"/>
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </DataTrigger.ExitActions>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <!--
+            SPOTLIGHT TILE — square cover card in the single game row.
+            Cover art fills the tile edge-to-edge; the name only appears on the
+            focused tile (the hero above already names it, so repeating it on every
+            tile is noise). Focus is shown by the accent ring + the tile coming to
+            full size, while unfocused tiles rest at 0.9 — the same "shrink when
+            unfocused" technique used before, so nothing ever renders outside its
+            allocated box and gets clipped by the ScrollViewer.
+        -->
+        <DataTemplate x:Key="SpotlightTileTemplate">
+            <Border Width="132" Height="132" Margin="0,14,14,14" CornerRadius="14"
+                    Style="{StaticResource SpotlightCardStyle}"
+                    Background="{Binding ArtBrush}"
+                    RenderTransformOrigin="0.5,0.5"
+                    Tag="{Binding}"
+                    MouseLeftButtonDown="GameTile_MouseLeftButtonDown"
+                    Cursor="Hand">
+                <Border.RenderTransform>
+                    <ScaleTransform ScaleX="0.9" ScaleY="0.9"/>
+                </Border.RenderTransform>
+                <Grid>
+                    <!-- Full-bleed cover art when a real image exists. -->
+                    <Border CornerRadius="14"
+                            Visibility="{Binding IconSource, Converter={StaticResource NullToVisibilityConverter}}">
+                        <Border.Background>
+                            <ImageBrush ImageSource="{Binding IconSource}" Stretch="UniformToFill"/>
+                        </Border.Background>
+                    </Border>
+
+                    <!-- Downloading tiles carry a thin amber bar at the base. -->
+                    <Border VerticalAlignment="Bottom" Height="4" CornerRadius="0,0,14,14" Background="#40000000"
+                            Visibility="{Binding IsDownloading, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="{Binding ProgressPercent, Converter={StaticResource PercentToStarConverter}}"/>
+                                <ColumnDefinition Width="{Binding ProgressPercent, Converter={StaticResource PercentToRemainingStarConverter}}"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" Background="#F5B72E" CornerRadius="0,0,0,14"/>
+                        </Grid>
+                    </Border>
+                </Grid>
+            </Border>
+        </DataTemplate>
+    </Window.Resources>
+
+    <Grid x:Name="RootGrid">
+        <local:AmbientBackground x:Name="Ambient"/>
+
+        <!--
+            SPOTLIGHT DASHBOARD
+            One flat row of games; whichever is focused drives the whole screen — the
+            hero panel above (title/art/actions) and the ambient tint behind it. There
+            is no multi-row grid and no separate hero tile: the hero binds to
+            MainWindowViewModel.FocusedGame, so moving along the row swaps everything
+            at once, which is what makes it read like a console rather than a database.
+        -->
+        <Grid x:Name="ContentGrid" Opacity="0">
+            <!-- Per-game colour wash over the ambient video. Rebuilt whenever
+                 FocusedGame changes (AmbientTintBrush), giving the background its
+                 reaction to selection. -->
+            <Border Background="{Binding AmbientTintBrush}"/>
+
+            <!-- Left-to-right darkening so the hero text always has a solid ground,
+                 and a bottom scrim so the game row reads over the video. -->
+            <Border>
+                <Border.Background>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                        <GradientStop Color="#F0040508" Offset="0"/>
+                        <GradientStop Color="#8C040508" Offset="0.44"/>
+                        <GradientStop Color="#00040508" Offset="0.76"/>
+                    </LinearGradientBrush>
+                </Border.Background>
+            </Border>
+            <Border>
+                <Border.Background>
+                    <LinearGradientBrush StartPoint="0,1" EndPoint="0,0">
+                        <GradientStop Color="#E6040508" Offset="0"/>
+                        <GradientStop Color="#00040508" Offset="0.5"/>
+                    </LinearGradientBrush>
+                </Border.Background>
+            </Border>
+
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="84"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Left icon rail -->
+                <Border Grid.Column="0" Background="#03FFFFFF" BorderBrush="#0FFFFFFF" BorderThickness="0,0,1,0">
+                    <Grid>
+                        <StackPanel VerticalAlignment="Top" HorizontalAlignment="Center" Margin="0,28,0,0">
+                            <Border Width="30" Height="30" CornerRadius="8" Margin="0,0,0,28">
+                                <Border.Background>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                        <GradientStop Color="{DynamicResource Theme.AccentPrimaryColor}" Offset="0"/>
+                                        <GradientStop Color="{DynamicResource Theme.AccentSecondaryColor}" Offset="1"/>
+                                    </LinearGradientBrush>
+                                </Border.Background>
+                            </Border>
+                            <ItemsControl ItemsSource="{Binding RailItems}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Vertical"/>
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Style="{StaticResource RailItemStyle}" Margin="0,0,0,16">
+                                            <TextBlock Text="{Binding Glyph}" FontSize="9" FontWeight="Bold"
+                                                       Foreground="#C7C7D1" HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center"/>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+
+                        <StackPanel VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,28">
+                            <Button x:Name="UpdatesRailButton" Margin="0,0,0,12"
+                                    Cursor="Hand" Click="UpdatesRailButton_Click">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border x:Name="UpdatesRailBorder" Width="42" Height="42" CornerRadius="12"
+                                                Background="#0FFFFFFF" BorderThickness="1" BorderBrush="Transparent">
+                                            <TextBlock Text="Upd" FontSize="9.5" FontWeight="Bold"
+                                                       Foreground="#C7C7D1" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="UpdatesRailBorder" Property="Background" Value="{DynamicResource Theme.AccentPrimaryTintBrush}"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Button.Template>
+                            </Button>
+
+                            <Button x:Name="SettingsRailButton" Cursor="Hand" Click="SettingsRailButton_Click">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border x:Name="SettingsRailBorder" Width="42" Height="42" CornerRadius="12"
+                                                Background="#0FFFFFFF" BorderThickness="1" BorderBrush="Transparent">
+                                            <TextBlock Text="Set" FontSize="9.5" FontWeight="Bold"
+                                                       Foreground="#C7C7D1" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="SettingsRailBorder" Property="Background" Value="{DynamicResource Theme.AccentPrimaryTintBrush}"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Button.Template>
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- Main stage -->
+                <Grid Grid.Column="1" Margin="52,0,44,0" DataContext="{Binding FocusedGame}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Top status line -->
+                    <Grid Grid.Row="0" Margin="0,26,0,0">
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,16,0">
+                                <Border Width="24" Height="12" CornerRadius="2" BorderBrush="#B8B8C2" BorderThickness="1.5"
+                                        Background="Transparent" Padding="2">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition/><ColumnDefinition/><ColumnDefinition/><ColumnDefinition/>
+                                        </Grid.ColumnDefinitions>
+                                        <Rectangle Grid.Column="0" Margin="0.5,0" Fill="#B8B8C2"
+                                                   Visibility="{Binding DataContext.BatteryIcon.Segment0, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                                        <Rectangle Grid.Column="1" Margin="0.5,0" Fill="#B8B8C2"
+                                                   Visibility="{Binding DataContext.BatteryIcon.Segment1, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                                        <Rectangle Grid.Column="2" Margin="0.5,0" Fill="#B8B8C2"
+                                                   Visibility="{Binding DataContext.BatteryIcon.Segment2, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                                        <Rectangle Grid.Column="3" Margin="0.5,0" Fill="#B8B8C2"
+                                                   Visibility="{Binding DataContext.BatteryIcon.Segment3, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                                    </Grid>
+                                </Border>
+                                <Border Width="2" Height="5" Background="#B8B8C2" Margin="1,0,0,0"/>
+                            </StackPanel>
+                            <TextBlock Text="{Binding DataContext.ClockLabel, RelativeSource={RelativeSource AncestorType=Window}}"
+                                       Foreground="#B8B8C2" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Grid>
+
+                    <!--
+                        HERO — binds to FocusedGame. Everything here swaps when focus
+                        moves along the row below.
+                    -->
+                    <StackPanel x:Name="HeroPanel" Grid.Row="1" VerticalAlignment="Center" MaxWidth="620"
+                                HorizontalAlignment="Left" Margin="0,0,0,10">
+                        <StackPanel.RenderTransform>
+                            <TranslateTransform x:Name="HeroSlide" Y="0"/>
+                        </StackPanel.RenderTransform>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                            <TextBlock Text="{Binding ProviderLabel}" FontSize="12" FontWeight="Bold"
+                                       Foreground="{DynamicResource Theme.AccentPrimaryBrush}" VerticalAlignment="Center"/>
+                            <Border CornerRadius="7" Padding="10,4" Margin="14,0,0,0"
+                                    Background="{DynamicResource Theme.AccentPrimaryFaintTintBrush}"
+                                    Visibility="{Binding IsDownloading, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+                                <TextBlock Text="INSTALLED" FontSize="10.5" FontWeight="Bold"
+                                           Foreground="{DynamicResource Theme.AccentPrimaryBrush}"/>
+                            </Border>
+                            <Border CornerRadius="7" Padding="10,4" Margin="14,0,0,0" Background="#26F5B72E"
+                                    Visibility="{Binding IsDownloading, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <TextBlock Text="DOWNLOADING" FontSize="10.5" FontWeight="Bold" Foreground="#F5B72E"/>
+                            </Border>
+                        </StackPanel>
+
+                        <TextBlock Text="{Binding GameName}" FontSize="58" FontWeight="Bold"
+                                   Foreground="White" TextWrapping="Wrap" LineHeight="58"
+                                   Margin="0,0,0,18"/>
+
+                        <!-- Download progress, only while this game is downloading -->
+                        <StackPanel Margin="0,0,0,20" Width="420" HorizontalAlignment="Left"
+                                    Visibility="{Binding IsDownloading, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <Grid Margin="0,0,0,8">
+                                <TextBlock Text="{Binding ProgressPercent, StringFormat={}{0:0}%}" FontSize="20" FontWeight="Bold"
+                                           Foreground="#F5B72E" HorizontalAlignment="Left"/>
+                                <TextBlock Text="{Binding Activity.InstallSizeLabel, StringFormat=of {0}}" FontSize="12" FontWeight="SemiBold"
+                                           Foreground="#8A8A96" HorizontalAlignment="Right" VerticalAlignment="Bottom"/>
+                            </Grid>
+                            <Border Height="6" CornerRadius="4" Background="#1FFFFFFF">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="{Binding ProgressPercent, Converter={StaticResource PercentToStarConverter}}"/>
+                                        <ColumnDefinition Width="{Binding ProgressPercent, Converter={StaticResource PercentToRemainingStarConverter}}"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Border Grid.Column="0" CornerRadius="4" Background="#F5B72E"/>
+                                </Grid>
+                            </Border>
+                        </StackPanel>
+
+                        <!-- Last played line, only when not downloading -->
+                        <TextBlock FontSize="13" Foreground="#8A8A96" FontWeight="SemiBold" Margin="0,0,0,22"
+                                   Visibility="{Binding IsDownloading, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+                            <Run Text="Last played"/>
+                            <Run Text="{Binding Activity.LastPlayedLabel, Mode=OneWay}" FontWeight="Bold" Foreground="#B8B8C2"/>
+                            <Run Text="  ·  " Foreground="#4A4A54"/>
+                            <Run Text="{Binding Activity.PlayTimeLabel, Mode=OneWay}" Foreground="#B8B8C2"/>
+                        </TextBlock>
+
+                        <StackPanel Orientation="Horizontal">
+                            <Border x:Name="PlayButtonRing" CornerRadius="15" BorderThickness="2.5" Padding="1.5"
+                                    BorderBrush="Transparent">
+                                <Button x:Name="HeroPlayButton" Cursor="Hand" Click="HeroPlayButton_Click">
+                                    <Button.Template>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border x:Name="Bg" CornerRadius="12" Padding="42,14"
+                                                    Background="{DynamicResource Theme.AccentPrimaryBrush}">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="▶" FontSize="14" FontWeight="Bold" Foreground="#06070B"
+                                                               VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                                    <TextBlock Text="Play" FontSize="16" FontWeight="Bold" Foreground="#06070B"
+                                                               VerticalAlignment="Center"/>
+                                                </StackPanel>
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="Bg" Property="Opacity" Value="0.88"/>
+                                                </Trigger>
+                                                <Trigger Property="IsPressed" Value="True">
+                                                    <Setter TargetName="Bg" Property="Opacity" Value="0.72"/>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Button.Template>
+                                </Button>
+                            </Border>
+
+                            <Border x:Name="DetailsButtonRing" CornerRadius="15" BorderThickness="2.5" Padding="1.5"
+                                    BorderBrush="Transparent" Margin="12,0,0,0">
+                                <Button x:Name="HeroDetailsButton" Cursor="Hand" Click="HeroDetailsButton_Click">
+                                    <Button.Template>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border x:Name="Bg" CornerRadius="12" Padding="30,14"
+                                                    Background="#1AFFFFFF" BorderBrush="#2BFFFFFF" BorderThickness="1">
+                                                <TextBlock Text="Details" FontSize="16" FontWeight="Bold" Foreground="White"/>
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="Bg" Property="Background" Value="#26FFFFFF"/>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Button.Template>
+                                </Button>
+                            </Border>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- GAME ROW — single horizontal strip of square cover tiles -->
+                    <ScrollViewer x:Name="GameRowScroller" Grid.Row="2" HorizontalScrollBarVisibility="Hidden"
+                                  VerticalScrollBarVisibility="Disabled" Margin="0,0,0,34"
+                                  DataContext="{Binding DataContext, RelativeSource={RelativeSource AncestorType=Window}}">
+                        <ItemsControl x:Name="GameRowItems" ItemsSource="{Binding Games}"
+                                      ItemTemplate="{StaticResource SpotlightTileTemplate}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal"/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Grid>
+            </Grid>
+        </Grid>
+
+        <!-- Game detail screen, shown when a tile is selected (replaces the immediate
+             swallow launch). Keeps the ambient video behind a frosted scrim; its Play
+             button fires the swallow via LaunchTakeover below. Sits under the launch
+             overlay so the swallow animation covers it. -->
+        <local:GameDetailScreen x:Name="GameDetail"/>
+
+        <!-- Full-screen launch takeover: fills the frame with the launched game's
+             art and a launching/ready transition, per plan.md §9.2's Smart Boot
+             Splash concept. Never actually starts a process — see LaunchOverlay.xaml.cs. -->
+        <local:LaunchOverlay x:Name="LaunchTakeover"/>
+
+        <!-- Quick-access side menu (plan.md §9.1), toggled by Tab — stands in for
+             the real gamepad Guide/Home button, which this laptop has no physical
+             controller bound to. Sits above the launch overlay too, so it's always
+             reachable regardless of what's on screen underneath. -->
+        <local:GuideMenu x:Name="Guide"/>
+
+        <!-- Controller setup wizard, opened on demand from the Guide Menu. Sits above
+             everything, including the Guide Menu itself. -->
+        <local:ControllerWizard x:Name="ControllerSetup"/>
+
+        <!-- Updates screen (Windows Updates + AMD driver updates, mock data for this
+             test build), opened from its own dedicated rail button. Topmost overlay. -->
+        <local:UpdatesScreen x:Name="Updates"/>
+
+        <!-- Settings screen, opened from its own dedicated rail button. Theme
+             section is real (ThemeManager); Display/Audio are visual-only mocks. -->
+        <local:SettingsScreen x:Name="Settings"/>
+    </Grid>
+</Window>

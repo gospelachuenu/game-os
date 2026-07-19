@@ -1,0 +1,138 @@
+<UserControl x:Class="UI.SettingsScreen"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:local="clr-namespace:UI"
+             mc:Ignorable="d" x:Name="Root" Visibility="Collapsed">
+    <!--
+        Settings screen: takes over the home screen's content (game rows hidden) but
+        keeps the same ambient video playing behind it, same treatment as
+        UpdatesScreen — see MainWindow's Settings.Opened/CloseRequested wiring, which
+        only collapses ContentGrid, not Ambient. Reached from its own dedicated rail
+        button. The theme section is real and functional (ThemeManager.Apply);
+        Display/Audio are visual-only mock sections, same status as the Guide Menu's
+        sliders — there is no real DDC-CI/audio backend wired up in this test build yet.
+    -->
+    <UserControl.Resources>
+        <Style x:Key="SectionCardStyle" TargetType="Border">
+            <Setter Property="CornerRadius" Value="18"/>
+            <Setter Property="Background" Value="#0AFFFFFF"/>
+            <Setter Property="BorderBrush" Value="#14FFFFFF"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="28,24"/>
+            <Setter Property="Margin" Value="0,0,0,20"/>
+        </Style>
+
+        <Style x:Key="ThemeSwatchStyle" TargetType="Border">
+            <Setter Property="Width" Value="120"/>
+            <Setter Property="Height" Value="86"/>
+            <Setter Property="CornerRadius" Value="14"/>
+            <Setter Property="BorderThickness" Value="2"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="Margin" Value="0,0,16,16"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                    <Setter Property="BorderBrush" Value="White"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </UserControl.Resources>
+
+    <!-- Semi-transparent scrim over the home screen's ambient video (kept playing
+         behind it, same as UpdatesScreen), not flat black. -->
+    <Grid Background="#66060709">
+        <ScrollViewer VerticalScrollBarVisibility="Hidden">
+            <Grid MaxWidth="1180" Margin="60,52,60,52">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- Header -->
+                <StackPanel Grid.Row="0" Margin="0,0,0,30">
+                    <TextBlock Text="SYSTEM" FontSize="12" FontWeight="Bold"
+                               Foreground="{DynamicResource Theme.AccentPrimaryBrush}" Margin="0,0,0,6"/>
+                    <TextBlock Text="Settings" FontSize="34" FontWeight="Bold" Foreground="White"/>
+                </StackPanel>
+
+                <StackPanel Grid.Row="1" MaxWidth="760">
+                    <!-- Theme -->
+                    <Border Style="{StaticResource SectionCardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="THEME" FontSize="11" FontWeight="Bold" Foreground="#6E6E7D" Margin="0,0,0,6"/>
+                            <TextBlock Text="Accent Color" FontSize="18" FontWeight="Bold" Foreground="White" Margin="0,0,0,18"/>
+
+                            <ItemsControl ItemsSource="{Binding ThemeOptions}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel Orientation="Horizontal"/>
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Style="{StaticResource ThemeSwatchStyle}"
+                                                Tag="{Binding}" MouseLeftButtonDown="ThemeSwatch_MouseLeftButtonDown">
+                                            <Grid>
+                                                <Border CornerRadius="12" Margin="2">
+                                                    <Border.Background>
+                                                        <SolidColorBrush Color="{Binding AccentColor}"/>
+                                                    </Border.Background>
+                                                </Border>
+                                                <TextBlock Text="{Binding Name}" FontSize="11" FontWeight="Bold"
+                                                           Foreground="#06070B" VerticalAlignment="Bottom"
+                                                           HorizontalAlignment="Center" Margin="0,0,0,10"/>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Display -->
+                    <Border Style="{StaticResource SectionCardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="DISPLAY" FontSize="11" FontWeight="Bold" Foreground="#6E6E7D" Margin="0,0,0,6"/>
+                            <TextBlock Text="Backlight" FontSize="18" FontWeight="Bold" Foreground="White" Margin="0,0,0,18"/>
+
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <Slider x:Name="BacklightSlider" Minimum="0" Maximum="100" Value="80"
+                                        IsHitTestVisible="False" IsEnabled="False"/>
+                                <TextBlock Grid.Column="1" Text="{Binding ElementName=BacklightSlider, Path=Value, StringFormat={}{0:0}%}"
+                                           Foreground="White" FontSize="13" FontWeight="SemiBold" Margin="12,0,0,0" VerticalAlignment="Center"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Audio -->
+                    <Border Style="{StaticResource SectionCardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="AUDIO" FontSize="11" FontWeight="Bold" Foreground="#6E6E7D" Margin="0,0,0,6"/>
+                            <TextBlock Text="Volume" FontSize="18" FontWeight="Bold" Foreground="White" Margin="0,0,0,18"/>
+
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <Slider x:Name="VolumeSlider" Minimum="0" Maximum="100" Value="65"
+                                        IsHitTestVisible="False" IsEnabled="False"/>
+                                <TextBlock Grid.Column="1" Text="{Binding ElementName=VolumeSlider, Path=Value, StringFormat={}{0:0}%}"
+                                           Foreground="White" FontSize="13" FontWeight="SemiBold" Margin="12,0,0,0" VerticalAlignment="Center"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Grid>
+        </ScrollViewer>
+
+        <TextBlock Text="Press Tab or B to close" FontSize="12" FontWeight="Bold"
+                   Foreground="#3A3A45" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,26"/>
+    </Grid>
+</UserControl>

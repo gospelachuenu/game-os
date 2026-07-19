@@ -1,0 +1,7 @@
+- [Project Overview](project_overview.md) — Gaming OS console appliance spec, plan.md, ADLX hardware unknown
+- [Dev Environment Constraint](dev-environment-constraint.md) — this laptop is personal, NEVER execute/run system-level code here
+- [Build Progress](build-progress.md) — 14 backend projects, 125 tests: Supervisor, Library, Input, GameLauncher, HardwareManager, CecController, MaintenanceHub
+- [Backend Logic Complete](backend-logic-complete.md) — all backend-only work is done; UI or real hardware are the remaining tracks
+- [UI Build Progress](ui-build-progress.md) — windowed test build (src/UI): Terminal-style dashboard, crossfaded video background, theming, WPF gotchas learned the hard way
+- [UI Not Yet Built](ui-not-yet-built.md) — windowed test build exists, but the REAL fullscreen console UI.exe does not — don't conflate the two
+- [Feedback: Verify Before Claiming Fixed](feedback-verify-before-claiming-fixed.md) — NEVER say a visual fix worked without seeing it rendered first (screenshot or user confirmation)

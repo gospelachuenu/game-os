@@ -1,0 +1,18 @@
+# Build output
+bin/
+obj/
+
+# Visual Studio / Rider
+.vs/
+.idea/
+*.user
+*.suo
+
+# The raw 616MB source video the ambient loop was cut from. The trimmed
+# ~2.4MB src/UI/Assets/ambient_loop.mp4 IS committed; this original is not
+# (too large for git, and reproducible via the ffmpeg steps in the memory bank).
+*.mp4
+!src/UI/Assets/ambient_loop.mp4
+
+# Local test database (regenerated on run by SampleLibrarySeeder)
+*.db
