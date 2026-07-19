@@ -1,0 +1,48 @@
+<UserControl x:Class="UI.AmbientBackground"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             mc:Ignorable="d" IsHitTestVisible="False">
+    <!--
+        Ambient background: a looping, muted video clip (Assets/ambient_loop.mp4 -
+        a trimmed, slowed-down, seamlessly-crossfaded segment derived from the user's
+        source footage) stretched to fill the window. A BlurEffect on the video fakes
+        a frosted-glass look (WPF has no native Acrylic/Mica backdrop blur), and a
+        translucent dark scrim sits on top so foreground text/tiles stay legible.
+
+        Two overlapping MediaElements (PlayerA/PlayerB) crossfade into each other
+        near the loop point instead of one player hard-restarting (Position=0 + Play())
+        on MediaEnded, which causes a visible decoder seek/re-buffer stutter even
+        though the underlying video file's own content already loops seamlessly.
+    -->
+    <Grid Background="#06070B" ClipToBounds="True">
+        <MediaElement x:Name="PlayerA"
+                      LoadedBehavior="Manual"
+                      UnloadedBehavior="Manual"
+                      Stretch="UniformToFill"
+                      IsMuted="True"
+                      Loaded="PlayerA_Loaded">
+            <MediaElement.Effect>
+                <BlurEffect Radius="28" KernelType="Gaussian"/>
+            </MediaElement.Effect>
+        </MediaElement>
+
+        <MediaElement x:Name="PlayerB"
+                      LoadedBehavior="Manual"
+                      UnloadedBehavior="Manual"
+                      Stretch="UniformToFill"
+                      IsMuted="True"
+                      Opacity="0">
+            <MediaElement.Effect>
+                <BlurEffect Radius="28" KernelType="Gaussian"/>
+            </MediaElement.Effect>
+        </MediaElement>
+
+        <!-- Frosted tint: a soft translucent white wash on top of the blur reads as
+             "frosted glass" rather than just a blurred video, plus the existing dark
+             scrim underneath it for text legibility. -->
+        <Rectangle Fill="#8A06070B"/>
+        <Rectangle Fill="#14FFFFFF"/>
+    </Grid>
+</UserControl>
