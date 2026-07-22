@@ -3,97 +3,220 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:local="clr-namespace:UI"
              mc:Ignorable="d" x:Name="Root" Visibility="Collapsed">
     <!--
-        Controller setup wizard: polls all 4 XInput slots live (via the same
-        XInputGamepadReader used for real navigation) and shows connection status per
-        slot. A slot moves from "connected" to "confirmed" once ANY button is pressed
-        on it — genuine detection, not a static walkthrough. Opened on demand from the
-        Guide Menu, not automatically on startup. Covers both Xbox controllers
-        (native XInput) and PlayStation controllers (work identically AS LONG AS
-        something — Steam, DS4Windows — is translating them into an XInput device;
-        Windows does not do this natively, hence the guidance text).
+        SPOTLIGHT CONTROLLER SETUP.
+        Each player slot is drawn as a physical controller that lights up as it
+        connects, rather than four abstract status rows — you can see which slot is
+        yours without reading. Live XInput polling drives the states:
+        grey = empty, amber = connected but unconfirmed, green = ready.
+        The ambient video keeps playing behind a frosted scrim, same as every other
+        Spotlight screen.
     -->
-    <Grid Background="#D2060709">
-        <Border Width="640" MaxHeight="560" HorizontalAlignment="Center" VerticalAlignment="Center"
-                CornerRadius="20" Background="#F0121016" BorderBrush="#1FFFFFFF" BorderThickness="1"
-                Padding="40,36">
-            <StackPanel>
-                <TextBlock Text="CONTROLLER SETUP" FontSize="13" FontWeight="Bold"
-                           Foreground="{DynamicResource Theme.AccentPrimaryBrush}" Margin="0,0,0,10"/>
-                <TextBlock Text="Turn on your controller and press any button to connect it."
-                           FontSize="22" FontWeight="Bold" Foreground="White" TextWrapping="Wrap" Margin="0,0,0,28"/>
+    <UserControl.Resources>
+        <local:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
 
-                <ItemsControl ItemsSource="{Binding Slots, ElementName=Root}">
-                    <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <StackPanel/>
-                        </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                            <Border CornerRadius="12" Background="#0FFFFFFF" Padding="18,14" Margin="0,0,0,10">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition/>
-                                        <ColumnDefinition Width="Auto"/>
-                                    </Grid.ColumnDefinitions>
+        <!-- One player slot: status dot, pad glyph, caption. -->
+        <DataTemplate x:Key="ControllerSlotTemplate">
+            <Border Width="212" Margin="0,0,16,0" CornerRadius="16" Padding="20,18"
+                    Background="#0AFFFFFF" BorderThickness="1" BorderBrush="#17FFFFFF">
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Setter Property="Opacity" Value="0.62"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsLit}" Value="True">
+                                <Setter Property="Opacity" Value="1"/>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding State}" Value="Confirmed">
+                                <Setter Property="Background" Value="{DynamicResource Theme.AccentPrimaryFaintTintBrush}"/>
+                                <Setter Property="BorderBrush" Value="{DynamicResource Theme.AccentPrimaryBrush}"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
 
-                                    <Ellipse Grid.Column="0" Width="10" Height="10" Margin="0,0,14,0" VerticalAlignment="Center">
-                                        <Ellipse.Style>
-                                            <Style TargetType="Ellipse">
-                                                <Setter Property="Fill" Value="#3A3A45"/>
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding State}" Value="Connected">
-                                                        <Setter Property="Fill" Value="#F5B72E"/>
-                                                    </DataTrigger>
-                                                    <DataTrigger Binding="{Binding State}" Value="Confirmed">
-                                                        <Setter Property="Fill" Value="#33D17A"/>
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </Ellipse.Style>
-                                    </Ellipse>
+                <StackPanel>
+                    <!-- header: dot + player number -->
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                        <Ellipse Width="9" Height="9" VerticalAlignment="Center" Margin="0,0,10,0">
+                            <Ellipse.Style>
+                                <Style TargetType="Ellipse">
+                                    <Setter Property="Fill" Value="#3A3F36"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding State}" Value="Connected">
+                                            <Setter Property="Fill" Value="#F5B72E"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding State}" Value="Confirmed">
+                                            <Setter Property="Fill" Value="{DynamicResource Theme.AccentPrimaryBrush}"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Ellipse.Style>
+                        </Ellipse>
+                        <TextBlock Text="{Binding Label}" FontSize="10.5" FontWeight="Bold"
+                                   Foreground="#7A8072" VerticalAlignment="Center"/>
+                    </StackPanel>
 
-                                    <TextBlock Grid.Column="1" Text="{Binding Label}" Foreground="White"
-                                               FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    <!--
+                        Controller glyph, drawn from primitives (no external asset):
+                        rounded body, two angled grips, two thumbsticks. Lights up in
+                        the accent colour once the slot is confirmed.
+                    -->
+                    <Grid Width="118" Height="76" Margin="0,0,0,16" HorizontalAlignment="Center">
+                        <Grid.Resources>
+                            <Style x:Key="PadPartStyle" TargetType="Border">
+                                <Setter Property="Background" Value="#1AFFFFFF"/>
+                                <Setter Property="BorderBrush" Value="#2BFFFFFF"/>
+                                <Setter Property="BorderThickness" Value="1"/>
+                            </Style>
+                        </Grid.Resources>
 
-                                    <TextBlock Grid.Column="2" VerticalAlignment="Center" FontSize="12" FontWeight="Bold">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
-                                                <Setter Property="Text" Value="Not connected"/>
-                                                <Setter Property="Foreground" Value="#6E6E7D"/>
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding State}" Value="Connected">
-                                                        <Setter Property="Text" Value="Press any button"/>
-                                                        <Setter Property="Foreground" Value="#F5B72E"/>
-                                                    </DataTrigger>
-                                                    <DataTrigger Binding="{Binding State}" Value="Confirmed">
-                                                        <Setter Property="Text" Value="Ready"/>
-                                                        <Setter Property="Foreground" Value="#33D17A"/>
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBlock.Style>
-                                    </TextBlock>
-                                </Grid>
+                        <!-- grips -->
+                        <Border Width="34" Height="46" CornerRadius="17" HorizontalAlignment="Left"
+                                VerticalAlignment="Bottom" Style="{StaticResource PadPartStyle}"
+                                RenderTransformOrigin="0.5,0.5">
+                            <Border.RenderTransform><RotateTransform Angle="16"/></Border.RenderTransform>
+                        </Border>
+                        <Border Width="34" Height="46" CornerRadius="17" HorizontalAlignment="Right"
+                                VerticalAlignment="Bottom" Style="{StaticResource PadPartStyle}"
+                                RenderTransformOrigin="0.5,0.5">
+                            <Border.RenderTransform><RotateTransform Angle="-16"/></Border.RenderTransform>
+                        </Border>
+
+                        <!-- body -->
+                        <Border Height="46" VerticalAlignment="Top" Margin="0,10,0,0" CornerRadius="24,24,20,20"
+                                Style="{StaticResource PadPartStyle}"/>
+
+                        <!-- thumbsticks -->
+                        <Ellipse Width="15" Height="15" Fill="#38FFFFFF" HorizontalAlignment="Left"
+                                 VerticalAlignment="Top" Margin="26,26,0,0"/>
+                        <Ellipse Width="15" Height="15" Fill="#38FFFFFF" HorizontalAlignment="Right"
+                                 VerticalAlignment="Top" Margin="0,26,26,0"/>
+
+                        <!-- accent overlay while confirmed -->
+                        <Grid Visibility="Collapsed">
+                            <Grid.Style>
+                                <Style TargetType="Grid">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding State}" Value="Confirmed">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Grid.Style>
+                            <Border Width="34" Height="46" CornerRadius="17" HorizontalAlignment="Left"
+                                    VerticalAlignment="Bottom" RenderTransformOrigin="0.5,0.5"
+                                    Background="{DynamicResource Theme.AccentPrimaryTintBrush}"
+                                    BorderBrush="{DynamicResource Theme.AccentPrimaryBrush}" BorderThickness="1">
+                                <Border.RenderTransform><RotateTransform Angle="16"/></Border.RenderTransform>
                             </Border>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
+                            <Border Width="34" Height="46" CornerRadius="17" HorizontalAlignment="Right"
+                                    VerticalAlignment="Bottom" RenderTransformOrigin="0.5,0.5"
+                                    Background="{DynamicResource Theme.AccentPrimaryTintBrush}"
+                                    BorderBrush="{DynamicResource Theme.AccentPrimaryBrush}" BorderThickness="1">
+                                <Border.RenderTransform><RotateTransform Angle="-16"/></Border.RenderTransform>
+                            </Border>
+                            <Border Height="46" VerticalAlignment="Top" Margin="0,10,0,0" CornerRadius="24,24,20,20"
+                                    Background="{DynamicResource Theme.AccentPrimaryTintBrush}"
+                                    BorderBrush="{DynamicResource Theme.AccentPrimaryBrush}" BorderThickness="1"/>
+                            <Ellipse Width="15" Height="15" HorizontalAlignment="Left" VerticalAlignment="Top"
+                                     Margin="26,26,0,0" Fill="{DynamicResource Theme.AccentPrimaryBrush}" Opacity="0.75"/>
+                            <Ellipse Width="15" Height="15" HorizontalAlignment="Right" VerticalAlignment="Top"
+                                     Margin="0,26,26,0" Fill="{DynamicResource Theme.AccentPrimaryBrush}" Opacity="0.75"/>
+                        </Grid>
+                    </Grid>
 
-                <Border CornerRadius="10" Background="#0FFFFFFF" Padding="16" Margin="0,18,0,0">
-                    <TextBlock Foreground="#B8B8C2" FontSize="12" TextWrapping="Wrap" LineHeight="18">
-                        <Run Text="Xbox controllers connect directly."/>
-                        <LineBreak/>
-                        <Run Text="PlayStation (DualShock/DualSense) controllers need Steam or DS4Windows running in the background to be recognized."/>
-                    </TextBlock>
-                </Border>
+                    <!-- caption -->
+                    <Border CornerRadius="7" Padding="10,5" HorizontalAlignment="Left">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Background" Value="#0EFFFFFF"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding State}" Value="Connected">
+                                        <Setter Property="Background" Value="#26F5B72E"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding State}" Value="Confirmed">
+                                        <Setter Property="Background" Value="{DynamicResource Theme.AccentPrimaryFaintTintBrush}"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <TextBlock Text="{Binding StateLabel}" FontSize="10" FontWeight="Bold">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="#666B60"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding State}" Value="Connected">
+                                            <Setter Property="Foreground" Value="#F5B72E"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding State}" Value="Confirmed">
+                                            <Setter Property="Foreground" Value="{DynamicResource Theme.AccentPrimaryBrush}"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Border>
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+    </UserControl.Resources>
 
-                <TextBlock Text="Press Tab or B to close" FontSize="12" FontWeight="Bold"
-                           Foreground="#3A3A45" Margin="0,20,0,0" HorizontalAlignment="Center"/>
+    <Grid Background="#B3060709">
+        <Grid MaxWidth="1100" Margin="60,54,60,44">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- Header -->
+            <StackPanel Grid.Row="0">
+                <TextBlock Text="CONTROLLERS" FontSize="12" FontWeight="Bold"
+                           Foreground="{DynamicResource Theme.AccentPrimaryBrush}" Margin="0,0,0,10"/>
+                <TextBlock Text="Press any button to connect" FontSize="42" FontWeight="Bold"
+                           Foreground="White" LineHeight="46" Margin="0,0,0,14"/>
+                <TextBlock Text="Xbox pads connect straight away. PlayStation pads need Steam or DS4Windows running to be recognised."
+                           FontSize="13.5" Foreground="#9AA091" TextWrapping="Wrap" MaxWidth="620"
+                           HorizontalAlignment="Left" LineHeight="21"/>
             </StackPanel>
-        </Border>
+
+            <!-- Slots -->
+            <ItemsControl Grid.Row="1" ItemsSource="{Binding Slots, ElementName=Root}"
+                          ItemTemplate="{StaticResource ControllerSlotTemplate}"
+                          VerticalAlignment="Center" HorizontalAlignment="Left" Margin="0,20,0,0">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <StackPanel Orientation="Horizontal"/>
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+            </ItemsControl>
+
+            <!-- Footer -->
+            <StackPanel Grid.Row="2" Orientation="Horizontal">
+                <Border CornerRadius="15" BorderThickness="2.5" Padding="1.5"
+                        BorderBrush="{DynamicResource Theme.AccentPrimaryBrush}">
+                    <Button Cursor="Hand" Click="DoneButton_Click">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border x:Name="Bg" CornerRadius="12" Padding="42,14"
+                                        Background="{DynamicResource Theme.AccentPrimaryBrush}">
+                                    <TextBlock Text="Done" FontSize="16" FontWeight="Bold" Foreground="#06070B"/>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="Bg" Property="Opacity" Value="0.88"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+                </Border>
+                <TextBlock Text="B — Back" FontSize="12" FontWeight="Bold" Foreground="#666B60"
+                           VerticalAlignment="Center" Margin="24,0,0,0"/>
+            </StackPanel>
+        </Grid>
     </Grid>
 </UserControl>

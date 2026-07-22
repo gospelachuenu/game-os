@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The policy PERSISTS through the same UWF-proven state store the update
+         system uses. The model itself has no other dependencies — it is plain logic
+         that the console enforces and the portal (eventually) edits. -->
+    <ProjectReference Include="..\MaintenanceHub\MaintenanceHub.csproj" />
+  </ItemGroup>
+
+</Project>

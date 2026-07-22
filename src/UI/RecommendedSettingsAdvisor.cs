@@ -17,15 +17,21 @@ public sealed class DetectedHardware
     public required bool DisplaySupportsHdr { get; init; }
 
     /// <summary>
-    /// Stand-in for a real GPU/display probe. Modelled on a mid-to-high AMD build with
-    /// a 4K120 HDR panel — matches the project's AMD-card target (see project memory).
+    /// Stand-in for a real GPU/display probe, matching the fixed hardware target:
+    /// AMD Radeon RX 6600 (8 GB) driving a 1080p TV. Deliberately NOT a high-end 4K
+    /// mock — this should reflect the machine the console actually ships on.
+    ///
+    /// NOTE: nothing currently consumes this. The game detail screen's per-game
+    /// "recommended settings" panel was removed (see GameDetailViewModel), so this
+    /// class is retained only in case per-game advice is ever revisited — and if it is,
+    /// it should be driven by MEASURED data rather than GPU specs alone.
     /// </summary>
     public static DetectedHardware Simulated { get; } = new()
     {
-        GpuModel = "AMD Radeon RX 7800 XT",
-        GpuVramGb = 16,
-        DisplayWidth = 3840,
-        DisplayHeight = 2160,
+        GpuModel = "AMD Radeon RX 6600",
+        GpuVramGb = 8,
+        DisplayWidth = 1920,
+        DisplayHeight = 1080,
         DisplayRefreshHz = 120,
         DisplaySupportsHdr = true,
     };

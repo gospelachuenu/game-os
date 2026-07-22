@@ -1,0 +1,238 @@
+<UserControl x:Class="UI.BootScreen"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:local="clr-namespace:UI"
+             mc:Ignorable="d" x:Name="Root">
+    <!--
+        BOOT SCREEN — "Monolith" with an aperture hand-off.
+        A brand moment that doubles as the real loader: mark centred on near-black,
+        wordmark beneath, and a hairline progress bar tracking genuine startup steps.
+
+        The hand-off is NOT a crossfade. The mark itself scales up until it fills the
+        frame, and the dashboard is revealed through it — the boot screen becomes the
+        home screen rather than dissolving into it.
+
+        HOW THE REVEAL WORKS: the whole screen is masked by an OpacityMask whose shape
+        is the mark's rounded square. Growing that mask scales the "hole" the boot
+        screen is painted through — so as the square expands, the boot screen's own
+        black ground is what shrinks away, exposing the live dashboard beneath.
+
+        Starts VISIBLE — it must already be on screen at the first rendered frame,
+        otherwise the blank moment it exists to cover would still flash.
+    -->
+    <!--
+        NOTE ON THE REVEAL: an earlier version used an inverted OpacityMask
+        (DrawingBrush + EvenOdd cut-out) to punch a growing hole through the boot
+        screen. It broke twice on DrawingBrush viewbox/viewport mapping — first the
+        hole grew from the wrong origin (looked like the screen splitting apart), then
+        an unset Viewport collapsed the mask to 1x1 and the whole boot screen vanished.
+        Replaced with the plain, predictable approach below: the boot ground is four
+        panels that slide apart, and the mark simply scales up. No brush mapping
+        involved, so there is nothing to mis-map.
+    -->
+    <Grid x:Name="RootGrid" Background="Transparent">
+
+        <!--
+            The boot ground: one solid black panel covering the window, with a
+            ROUNDED-RECTANGLE hole clipped out of it. On hand-off that hole grows from
+            the mark's footprint outward, opening onto the dashboard underneath.
+
+            Why a clip and not four sliding panels: four straight-edged panels can only
+            ever make a sharp-cornered opening, which left visible black wedges at the
+            corners against the mark's 26px rounding. A CombinedGeometry (window rect
+            EXCLUDE rounded rect) reproduces the mark's exact corner radius, so the
+            opening matches the square it grows from.
+
+            Both geometries are sized from code — see LayoutGroundPanels.
+        -->
+        <Border x:Name="Ground" Panel.ZIndex="0" Background="#06070B">
+            <Border.Clip>
+                <CombinedGeometry GeometryCombineMode="Exclude">
+                    <CombinedGeometry.Geometry1>
+                        <RectangleGeometry x:Name="GroundOuter"/>
+                    </CombinedGeometry.Geometry1>
+                    <CombinedGeometry.Geometry2>
+                        <RectangleGeometry x:Name="GroundHole" RadiusX="26" RadiusY="26"/>
+                    </CombinedGeometry.Geometry2>
+                </CombinedGeometry>
+            </Border.Clip>
+        </Border>
+
+        <!-- Faint accent bloom so the black isn't completely flat -->
+        <Border x:Name="Bloom" Panel.ZIndex="1">
+            <Border.Background>
+                <RadialGradientBrush GradientOrigin="0.5,0.42" Center="0.5,0.42" RadiusX="0.75" RadiusY="0.75">
+                    <GradientStop Color="#1FA8E03B" Offset="0"/>
+                    <GradientStop Color="#00A8E03B" Offset="1"/>
+                </RadialGradientBrush>
+            </Border.Background>
+        </Border>
+
+        <!-- Mark + wordmark, optically centred slightly above middle -->
+        <StackPanel x:Name="MarkStack" Panel.ZIndex="2" HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Margin="0,0,0,40" Opacity="0" RenderTransformOrigin="0.5,0.5">
+            <!-- A group, not a bare ScaleTransform: the intro animates the scale while
+                 the update offer needs to slide the whole stack upward to make room,
+                 and a single transform slot cannot carry both. -->
+            <StackPanel.RenderTransform>
+                <TransformGroup>
+                    <ScaleTransform x:Name="MarkScale" ScaleX="0.93" ScaleY="0.93"/>
+                    <TranslateTransform x:Name="MarkSlide"/>
+                </TransformGroup>
+            </StackPanel.RenderTransform>
+
+            <Border x:Name="Mark" Width="104" Height="104" CornerRadius="26"
+                    HorizontalAlignment="Center" Margin="0,0,0,34">
+                <Border.Background>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                        <GradientStop Color="{DynamicResource Theme.AccentPrimaryColor}" Offset="0"/>
+                        <GradientStop Color="{DynamicResource Theme.AccentSecondaryColor}" Offset="1"/>
+                    </LinearGradientBrush>
+                </Border.Background>
+                <Border.Effect>
+                    <DropShadowEffect Color="#A8E03B" BlurRadius="70" ShadowDepth="0" Opacity="0.42"/>
+                </Border.Effect>
+            </Border>
+
+            <TextBlock x:Name="Wordmark" HorizontalAlignment="Center" Margin="0,0,0,14">
+                <Run Text="CONSOLE" FontSize="46" FontWeight="Bold" Foreground="White"/><!--
+             --><Run Text="OS" FontSize="46" FontWeight="Light" Foreground="#9AA091"/>
+            </TextBlock>
+
+            <TextBlock x:Name="Tagline" Text="P L A C E H O L D E R   M A R K" FontSize="11" FontWeight="Bold"
+                       Foreground="#4E5348" HorizontalAlignment="Center"/>
+        </StackPanel>
+
+        <!-- Progress + status, pinned low -->
+        <StackPanel x:Name="ProgressStack" Panel.ZIndex="2" HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                    Margin="0,0,0,78" Opacity="0">
+            <Border Width="260" Height="3" CornerRadius="2" Background="#17FFFFFF" Margin="0,0,0,20">
+                <Border x:Name="ProgressFill" HorizontalAlignment="Left" Width="0" Height="3" CornerRadius="2"
+                        Background="{DynamicResource Theme.AccentPrimaryBrush}"/>
+            </Border>
+
+            <TextBlock x:Name="StatusText" Text="STARTING" FontSize="10.5" FontWeight="Bold"
+                       Foreground="#666B60" HorizontalAlignment="Center"/>
+        </StackPanel>
+
+        <!--
+            HERO SLAB update offer (the approved mock). Two columns: the version number
+            as hero on a corner wash of accent (left), and "ready to install" with the
+            buttons (right).
+
+            IMPORTANT — the mark is NOT part of this slab. It stays as the real centred
+            Mark, lifted to the slab's right-column height and slid right to sit above
+            the buttons, using OfferMarkSlot as its target. When a choice is made the
+            mark travels BACK to screen centre, the boot loading shows briefly, and the
+            centred square then opens into the OS. So the slab is the offer; the mark
+            returning home is the launch.
+
+            The countdown defaults to PLAY FIRST: an unattended console must reach the
+            dashboard, never sit on a prompt nobody answers.
+        -->
+        <Grid x:Name="UpdateOffer" Panel.ZIndex="3" Visibility="Collapsed" Opacity="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="1.15*"/>
+                <ColumnDefinition Width="1*"/>
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0">
+                <Border.Background>
+                    <LinearGradientBrush StartPoint="0,1" EndPoint="1,0">
+                        <GradientStop Color="#38A8E03B" Offset="0"/>
+                        <GradientStop Color="#0F2E8A2A" Offset="0.55"/>
+                        <GradientStop Color="#0006070B" Offset="1"/>
+                    </LinearGradientBrush>
+                </Border.Background>
+
+                <StackPanel VerticalAlignment="Center" Margin="96,0,0,0">
+                    <TextBlock Text="UPDATE READY" FontSize="12" FontWeight="Bold" Margin="0,0,0,14"
+                               Foreground="{DynamicResource Theme.AccentPrimaryBrush}"/>
+                    <TextBlock x:Name="OfferVersionText" FontSize="120" FontWeight="Thin"
+                               Foreground="White" LineHeight="104">
+                        <Run Text="1."/><Run Text="4"
+                            Foreground="{DynamicResource Theme.AccentPrimaryBrush}" FontWeight="SemiBold"/><Run Text=".0"/>
+                    </TextBlock>
+                    <TextBlock x:Name="OfferBlurb" FontSize="15" Foreground="#B9BCB6" Margin="4,22,0,0" MaxWidth="360"
+                               TextWrapping="Wrap"
+                               Text="Faster startup, games you can remove without a launcher, and the controller fix."/>
+                </StackPanel>
+            </Border>
+
+            <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,96,0" HorizontalAlignment="Stretch">
+                <!-- The real centred Mark is animated to sit over this slot. Kept as a
+                     spacer so the actions below land in the right place. -->
+                <Border x:Name="OfferMarkSlot" Height="104" Margin="0,0,0,30"/>
+
+                <TextBlock Text="Ready to install" FontSize="19" FontWeight="SemiBold"
+                           Foreground="#F2F4F0" Margin="0,0,0,4"/>
+                <TextBlock x:Name="OfferSizeNote" Text="Already downloaded · about 20 seconds"
+                           FontSize="13" Foreground="#8A9099" Margin="0,0,0,24"/>
+
+                <Border x:Name="InstallNowButton" Cursor="Hand" CornerRadius="9" Padding="0,15"
+                        Margin="0,0,0,12" BorderThickness="2" HorizontalAlignment="Stretch"
+                        Background="{DynamicResource Theme.AccentPrimaryBrush}"
+                        BorderBrush="{DynamicResource Theme.AccentPrimaryBrush}"
+                        MouseLeftButtonUp="InstallNow_Click">
+                    <TextBlock Text="Install now" FontSize="15" FontWeight="SemiBold" Foreground="#06070B"
+                               HorizontalAlignment="Center"/>
+                </Border>
+
+                <Border x:Name="PlayFirstButton" Cursor="Hand" CornerRadius="9" Padding="0,15"
+                        Background="#14FFFFFF" BorderBrush="#2A2F3A" BorderThickness="2"
+                        HorizontalAlignment="Stretch"
+                        MouseLeftButtonUp="PlayFirst_Click">
+                    <TextBlock Text="Play first" FontSize="15" FontWeight="SemiBold" Foreground="#E8EAE6"
+                               HorizontalAlignment="Center"/>
+                </Border>
+
+                <TextBlock x:Name="UpdateOfferCountdown" Text="Starting in 10s…"
+                           FontSize="12" Foreground="#5A606A" Margin="0,18,0,0"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- Install progress, reusing the slab frame so the install continues the same
+             composition. The mark stays over OfferMarkSlot throughout the install, then
+             travels to centre when it completes. -->
+        <Grid x:Name="InstallProgress" Panel.ZIndex="3" Visibility="Collapsed">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="1.15*"/>
+                <ColumnDefinition Width="1*"/>
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0">
+                <Border.Background>
+                    <LinearGradientBrush StartPoint="0,1" EndPoint="1,0">
+                        <GradientStop Color="#38A8E03B" Offset="0"/>
+                        <GradientStop Color="#0F2E8A2A" Offset="0.55"/>
+                        <GradientStop Color="#0006070B" Offset="1"/>
+                    </LinearGradientBrush>
+                </Border.Background>
+                <StackPanel VerticalAlignment="Center" Margin="96,0,0,0">
+                    <TextBlock Text="INSTALLING" FontSize="12" FontWeight="Bold" Margin="0,0,0,14"
+                               Foreground="{DynamicResource Theme.AccentPrimaryBrush}"/>
+                    <TextBlock x:Name="InstallVersionText" FontSize="120" FontWeight="Thin"
+                               Foreground="White" LineHeight="104" Text="1.4.0"/>
+                </StackPanel>
+            </Border>
+
+            <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,96,0">
+                <Border Height="104" Margin="0,0,0,30"/>
+                <TextBlock x:Name="InstallCaption" Text="Applying files…" FontSize="18" FontWeight="SemiBold"
+                           Foreground="#F2F4F0" Margin="0,0,0,20"/>
+                <!-- Named so the fill can be sized against the track's REAL width. It
+                     stretches to the column, so a hardcoded fill width stopped the bar
+                     partway across instead of reaching the end. -->
+                <Border x:Name="InstallTrack" Height="4" CornerRadius="2" Background="#2A2F3A"
+                        HorizontalAlignment="Stretch">
+                    <Border x:Name="InstallFill" HorizontalAlignment="Left" Width="0" Height="4"
+                            CornerRadius="2" Background="{DynamicResource Theme.AccentPrimaryBrush}"/>
+                </Border>
+                <TextBlock Text="Please don't turn off the console." FontSize="12"
+                           Foreground="#5A606A" Margin="0,22,0,0"/>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</UserControl>

@@ -26,14 +26,19 @@ public sealed class GameDetailViewModel : INotifyPropertyChanged
     public string ProviderLabel { get; }
     public string StatusLabel { get; }
 
-    // Recommended graphics settings CHOSEN for the detected hardware (see
-    // RecommendedSettingsAdvisor), not a fixed constant — so it reflects the machine
-    // it's running on. Hardware is mocked in this test build (DetectedHardware.Simulated).
-    public string RecommendedPreset { get; }
-    public string RecommendedResolution { get; }
-    public string RecommendedFrameRate { get; }
-    public string RecommendedHdr { get; }
-    public string RecommendedBasis { get; }
+    // NOTE: this used to expose "recommended settings" (preset/resolution/fps/HDR)
+    // for the detail screen. Removed 2026-07-19 — it produced identical values for
+    // every game because it only ever looked at the GPU, so it presented a fiction as
+    // a recommendation. Genuinely per-game settings would need per-engine knowledge of
+    // what each option costs, and the console can neither read nor write a game's own
+    // config; games auto-detect far better than we could. See RecommendedSettingsAdvisor
+    // (kept, unused) for the logic if this is ever revisited from measured data.
+
+    /// <summary>Simulated play activity (last played / play time / size / achievements) — see GameActivityProvider.</summary>
+    public GameActivity Activity { get; }
+
+    /// <summary>Accent wash for this game, matching the tint the Spotlight home screen uses.</summary>
+    public Brush AmbientTintBrush { get; }
 
     public bool HasUpdatePending
     {
@@ -87,11 +92,22 @@ public sealed class GameDetailViewModel : INotifyPropertyChanged
         _hasUpdatePending = Entry.Status == GameStatus.Downloading;
         _updateProgressPercent = _hasUpdatePending ? tile.ProgressPercent : 0;
 
-        var recommended = RecommendedSettingsAdvisor.Recommend(DetectedHardware.Simulated);
-        RecommendedPreset = recommended.Preset;
-        RecommendedResolution = recommended.Resolution;
-        RecommendedFrameRate = recommended.FrameRate;
-        RecommendedHdr = recommended.Hdr;
-        RecommendedBasis = recommended.BasisSummary;
+        Activity = tile.Activity ?? GameActivityProvider.For(Entry);
+
+        var tint = Activity.AmbientTint;
+        AmbientTintBrush = new RadialGradientBrush
+        {
+            GradientOrigin = new System.Windows.Point(0.72, 0.2),
+            Center = new System.Windows.Point(0.72, 0.2),
+            RadiusX = 0.9,
+            RadiusY = 0.95,
+            GradientStops = new GradientStopCollection
+            {
+                new GradientStop(Color.FromArgb(0x52, tint.R, tint.G, tint.B), 0),
+                new GradientStop(Color.FromArgb(0x1E, tint.R, tint.G, tint.B), 0.45),
+                new GradientStop(Color.FromArgb(0x00, tint.R, tint.G, tint.B), 1),
+            },
+        };
+
     }
 }

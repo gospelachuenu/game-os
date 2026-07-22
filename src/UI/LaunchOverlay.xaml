@@ -20,16 +20,34 @@
                 <Border Background="#06070B"/>
                 <Border Background="{Binding ElementName=Root, Path=GameArt}"/>
 
-                <!-- Flat dark scrim across the whole cover so the LAUNCHING text and
-                     spinner stay readable no matter how bright the cover art is. -->
-                <Border Background="#99000000"/>
+                <!-- Flat dark scrim so a GAME's launching text stays readable over cover
+                     art of unknown brightness. Collapsed outright for an app: an app's
+                     art is a flat brand colour chosen in code, and 60% black over it just
+                     produces muddy maroon instead of YouTube red. Collapsed rather than
+                     merely transparent so there is no way for a stray opacity animation
+                     to bring it back mid-launch. -->
+                <Border x:Name="Scrim" Background="#99000000"/>
 
                 <!-- Vignette on top of that, darkening the edges further for depth. -->
-                <Rectangle>
+                <Rectangle x:Name="Vignette">
                     <Rectangle.Fill>
                         <RadialGradientBrush Center="0.5,0.55" RadiusX="0.9" RadiusY="0.9">
                             <GradientStop Color="#00000000" Offset="0.3"/>
                             <GradientStop Color="#B0000000" Offset="1"/>
+                        </RadialGradientBrush>
+                    </Rectangle.Fill>
+                </Rectangle>
+
+                <!-- Gentle darkening behind the text for an app launch, standing in for
+                     the flat scrim a game gets. Concentrated where the text actually is
+                     rather than washing the whole screen, so the brand colour stays
+                     itself and only the area under the wordmark is deepened. -->
+                <Rectangle x:Name="AppTextShade" Opacity="0" IsHitTestVisible="False">
+                    <Rectangle.Fill>
+                        <RadialGradientBrush Center="0.5,0.52" GradientOrigin="0.5,0.52"
+                                             RadiusX="0.55" RadiusY="0.45">
+                            <GradientStop Color="#5C000000" Offset="0"/>
+                            <GradientStop Color="#00000000" Offset="1"/>
                         </RadialGradientBrush>
                     </Rectangle.Fill>
                 </Rectangle>
@@ -67,6 +85,13 @@
                                Foreground="{DynamicResource Theme.AccentPrimaryBrush}"
                                HorizontalAlignment="Center" Margin="0,18,0,0"/>
                 </StackPanel>
+
+                <!-- Black frame an app launch passes THROUGH on its way to the page.
+                     Above everything else in the panel so it covers the art, the
+                     vignette and the branding in one flat sweep. Transparent for a game,
+                     which dismisses straight back to the dashboard. -->
+                <Border x:Name="BlackOut" Background="#06070B" Opacity="0"
+                        IsHitTestVisible="False"/>
             </Grid>
         </Border>
 

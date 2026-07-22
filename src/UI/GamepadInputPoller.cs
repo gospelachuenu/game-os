@@ -27,10 +27,30 @@ public sealed class GamepadInputPoller
     private readonly IGamepadReader _reader;
     private readonly DispatcherTimer _timer;
 
+    /// <summary>XInput supports four controller slots; a pad is not necessarily on 0.</summary>
+    private const int MaxControllerSlots = 4;
+
     private XInputButtons _previousButtons;
     private DateTime _lastStickMoveUtc = DateTime.MinValue;
     private int _lastStickDirectionX;
     private int _lastStickDirectionY;
+
+    /// <summary>
+    /// Which XInput slot the live controller is on.
+    ///
+    /// Polling slot 0 alone is wrong and fails SILENTLY: Windows assigns a slot on
+    /// connection and a pad routinely lands on 1, 2 or 3 — after a reconnect, or when
+    /// something else (Steam's virtual pad, a wireless dongle) already holds 0. When
+    /// that happened every poll saw "not connected" and returned, so no controller
+    /// input reached the app at all and nothing indicated why.
+    /// </summary>
+    private int _activeSlot;
+
+    /// <summary>True when a controller was found on some slot at the last poll.</summary>
+    public bool IsControllerConnected { get; private set; }
+
+    /// <summary>The slot the live controller is on, or -1 when none is connected.</summary>
+    public int ActiveSlot => IsControllerConnected ? _activeSlot : -1;
 
     public event Action? MoveUp;
     public event Action? MoveDown;
@@ -39,6 +59,37 @@ public sealed class GamepadInputPoller
     public event Action? Confirm;
     public event Action? Back;
     public event Action? ToggleGuideMenu;
+
+    /// <summary>
+    /// B held down rather than tapped.
+    ///
+    /// Exists because on a key-navigated page (YouTube's TV interface) a tap of B belongs
+    /// to the PAGE — it closes a video or leaves a menu, which is what a user expects —
+    /// leaving no button free to exit the browser itself. Holding is the console
+    /// convention for "I mean the system, not what is on screen".
+    ///
+    /// Fires once per hold; the subsequent release does NOT raise <see cref="Back"/>, so
+    /// holding never also triggers the tap action.
+    /// </summary>
+    public event Action? BackHeld;
+
+    private static readonly TimeSpan HoldDuration = TimeSpan.FromMilliseconds(650);
+
+    private DateTime _backPressedAtUtc;
+    private bool _backHoldFired;
+
+    /// <summary>
+    /// The left stick's position each poll, normalised to -1..1 with the deadzone
+    /// applied, plus seconds since the previous poll.
+    ///
+    /// Separate from the discrete Move* events because a POINTER needs continuous
+    /// motion — the stepped, repeat-delayed navigation those events provide is right
+    /// for hopping between tiles and useless for driving a cursor. Arguments are
+    /// (x, y, elapsedSeconds).
+    /// </summary>
+    public event Action<double, double, double>? StickMoved;
+
+    private DateTime _lastStickSampleUtc = DateTime.UtcNow;
 
     public GamepadInputPoller(IGamepadReader reader)
     {
@@ -53,19 +104,22 @@ public sealed class GamepadInputPoller
 
     private void Poll()
     {
-        var snapshot = _reader.GetState(userIndex: 0);
+        var snapshot = ReadActiveController();
         if (!snapshot.IsConnected)
         {
             _previousButtons = 0;
+            IsControllerConnected = false;
             return;
         }
+
+        IsControllerConnected = true;
 
         HandleButtonEdge(snapshot.Buttons, XInputButtons.DPadUp, MoveUp);
         HandleButtonEdge(snapshot.Buttons, XInputButtons.DPadDown, MoveDown);
         HandleButtonEdge(snapshot.Buttons, XInputButtons.DPadLeft, MoveLeft);
         HandleButtonEdge(snapshot.Buttons, XInputButtons.DPadRight, MoveRight);
         HandleButtonEdge(snapshot.Buttons, XInputButtons.A, Confirm);
-        HandleButtonEdge(snapshot.Buttons, XInputButtons.B, Back);
+        HandleBackButton(snapshot.Buttons);
 
         // Guide button is frequently intercepted by the OS/Xbox app before it ever
         // reaches a foreground application via XInput, so Start is the reliable
@@ -74,8 +128,115 @@ public sealed class GamepadInputPoller
         HandleButtonEdge(snapshot.Buttons, XInputButtons.Start, ToggleGuideMenu);
 
         HandleStickNavigation(snapshot.LeftThumbX, snapshot.LeftThumbY);
+        PublishRawStick(snapshot.LeftThumbX, snapshot.LeftThumbY);
 
         _previousButtons = snapshot.Buttons;
+    }
+
+    /// <summary>
+    /// Reads whichever slot the controller is actually on.
+    ///
+    /// Sticks with the last known slot while it stays connected — that is the common
+    /// case and costs one call. Only when it goes quiet does this sweep the other three,
+    /// so a pad that reconnects onto a different slot is picked up automatically rather
+    /// than leaving the console unresponsive until it is restarted.
+    /// </summary>
+    private GamepadSnapshot ReadActiveController()
+    {
+        var current = _reader.GetState(_activeSlot);
+        if (current.IsConnected)
+        {
+            return current;
+        }
+
+        for (var slot = 0; slot < MaxControllerSlots; slot++)
+        {
+            if (slot == _activeSlot)
+            {
+                continue;
+            }
+
+            var candidate = _reader.GetState(slot);
+            if (candidate.IsConnected)
+            {
+                // Moving slots means the previous pad's held buttons are meaningless;
+                // clearing avoids a phantom "press" the first time the new one reports.
+                _previousButtons = 0;
+                _activeSlot = slot;
+                return candidate;
+            }
+        }
+
+        return current;
+    }
+
+    /// <summary>
+    /// Publishes the stick as a continuous value for anything that needs smooth motion
+    /// rather than steps. Deadzone applied here so subscribers get a clean zero at rest
+    /// and do not each have to reimplement it.
+    /// </summary>
+    private void PublishRawStick(short thumbX, short thumbY)
+    {
+        if (StickMoved is null)
+        {
+            return;
+        }
+
+        var now = DateTime.UtcNow;
+        var elapsed = (now - _lastStickSampleUtc).TotalSeconds;
+        _lastStickSampleUtc = now;
+
+        // Clamp the step: if the app was stalled or the poller paused, a huge elapsed
+        // value would fling the cursor across the screen in one jump.
+        elapsed = Math.Min(elapsed, 0.1);
+
+        var x = Math.Abs((int)thumbX) > StickDeadZone ? thumbX / 32767.0 : 0;
+
+        // XInput's Y is positive-UP, the opposite of screen coordinates.
+        var y = Math.Abs((int)thumbY) > StickDeadZone ? -thumbY / 32767.0 : 0;
+
+        if (x != 0 || y != 0)
+        {
+            StickMoved.Invoke(x, y, elapsed);
+        }
+    }
+
+    /// <summary>
+    /// Distinguishes a tap of B from a hold.
+    ///
+    /// The tap fires on RELEASE rather than on press: until the button comes up there is
+    /// no way to know which it was, and firing on press would send the tap action and then
+    /// the hold action for a single gesture.
+    /// </summary>
+    private void HandleBackButton(XInputButtons current)
+    {
+        var isDownNow = current.HasFlag(XInputButtons.B);
+        var wasDownBefore = _previousButtons.HasFlag(XInputButtons.B);
+
+        if (isDownNow && !wasDownBefore)
+        {
+            _backPressedAtUtc = DateTime.UtcNow;
+            _backHoldFired = false;
+            return;
+        }
+
+        if (isDownNow)
+        {
+            // Fires the moment the threshold passes, while still held — waiting for
+            // release would make a deliberate hold feel unresponsive.
+            if (!_backHoldFired && DateTime.UtcNow - _backPressedAtUtc >= HoldDuration)
+            {
+                _backHoldFired = true;
+                BackHeld?.Invoke();
+            }
+
+            return;
+        }
+
+        if (wasDownBefore && !_backHoldFired)
+        {
+            Back?.Invoke();
+        }
     }
 
     private void HandleButtonEdge(XInputButtons current, XInputButtons flag, Action? handler)

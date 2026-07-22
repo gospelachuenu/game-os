@@ -126,16 +126,20 @@
                 </Border>
             </Grid>
 
-            <!-- Body: list + detail -->
+            <!--
+                Body: HERO left, queue right — same rhythm as the Spotlight home
+                screen. The selected update is the big thing on screen; the queue is a
+                compact supporting list. Moving up/down the queue swaps the hero.
+            -->
             <Grid Grid.Row="1">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="380"/>
-                    <ColumnDefinition Width="30"/>
                     <ColumnDefinition/>
+                    <ColumnDefinition Width="34"/>
+                    <ColumnDefinition Width="360"/>
                 </Grid.ColumnDefinitions>
 
-                <!-- Update list -->
-                <ScrollViewer x:Name="ListScrollViewer" Grid.Column="0" VerticalScrollBarVisibility="Hidden">
+                <!-- Update queue (right column) -->
+                <ScrollViewer x:Name="ListScrollViewer" Grid.Column="2" VerticalScrollBarVisibility="Hidden">
                     <ItemsControl x:Name="UpdatesItemsControl" ItemsSource="{Binding Updates}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
@@ -214,9 +218,9 @@
                     </ItemsControl>
                 </ScrollViewer>
 
-                <!-- Detail panel -->
-                <Border Grid.Column="2" CornerRadius="20" Background="#0AFFFFFF" BorderBrush="#14FFFFFF"
-                        BorderThickness="1" Padding="34,30"
+                <!-- HERO: the selected update, at Spotlight scale. No card chrome —
+                     it sits directly on the background like the home screen's hero. -->
+                <Border Grid.Column="0" Padding="0,4,0,0"
                         DataContext="{Binding SelectedUpdate}"
                         Visibility="{Binding Converter={StaticResource NullToVisibilityConverter}}">
                     <Grid>
@@ -232,8 +236,8 @@
                         <TextBlock Grid.Row="0" Text="{Binding KindLabel}" FontSize="12" FontWeight="Bold"
                                    Foreground="{DynamicResource Theme.AccentPrimaryBrush}" Margin="0,0,0,10"/>
 
-                        <TextBlock Grid.Row="1" Text="{Binding Title}" FontSize="26" FontWeight="Bold"
-                                   Foreground="White" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                        <TextBlock Grid.Row="1" Text="{Binding Title}" FontSize="40" FontWeight="Bold"
+                                   Foreground="White" TextWrapping="Wrap" LineHeight="42" Margin="0,0,0,12"/>
 
                         <TextBlock Grid.Row="2" Margin="0,0,0,26">
                             <Run Text="{Binding Version, Mode=OneWay}" FontWeight="SemiBold" Foreground="#B8B8C2" FontSize="13"/>
@@ -252,8 +256,8 @@
                         -->
                         <StackPanel Grid.Row="3" Margin="0,0,0,26"
                                     Visibility="{Binding State, Converter={StaticResource DownloadingToVisibilityConverter}}">
-                            <TextBlock Text="{Binding DownloadProgressPercent, StringFormat={}{0:0}% downloaded}"
-                                       FontSize="14" FontWeight="Bold" Foreground="#F5B72E" Margin="0,0,0,10"/>
+                            <TextBlock Text="{Binding DownloadProgressPercent, StringFormat={}{0:0}%}"
+                                       FontSize="30" FontWeight="Bold" Foreground="#F5B72E" Margin="0,0,0,8"/>
                             <Border Height="10" CornerRadius="6" Background="#14FFFFFF">
                                 <Grid>
                                     <Grid.ColumnDefinitions>

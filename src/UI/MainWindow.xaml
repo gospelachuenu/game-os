@@ -5,9 +5,11 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:UI"
         mc:Ignorable="d"
-        Title="Gaming OS - Dashboard (Windowed Test Build)" Height="680" Width="1280"
+        Title="Gaming OS - Dashboard" Height="680" Width="1280"
         Background="#06070B"
-        KeyDown="Window_KeyDown">
+        KeyDown="Window_KeyDown"
+        PreviewKeyDown="Window_PreviewKeyDown"
+        Loaded="Window_Loaded">
     <Window.Resources>
         <local:PercentToWidthConverter x:Key="PercentToWidthConverter"/>
         <local:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
@@ -185,8 +187,14 @@
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
 
-                <!-- Left icon rail -->
-                <Border Grid.Column="0" Background="#03FFFFFF" BorderBrush="#0FFFFFFF" BorderThickness="0,0,1,0">
+                <!-- Left icon rail. Named + transform so the first-run entrance can
+                     slide it in from off the left edge. -->
+                <Border x:Name="SideRail" Grid.Column="0" Background="#03FFFFFF"
+                        BorderBrush="#0FFFFFFF" BorderThickness="0,0,1,0"
+                        RenderTransformOrigin="0.5,0.5">
+                    <Border.RenderTransform>
+                        <TranslateTransform x:Name="SideRailSlide"/>
+                    </Border.RenderTransform>
                     <Grid>
                         <StackPanel VerticalAlignment="Top" HorizontalAlignment="Center" Margin="0,28,0,0">
                             <Border Width="30" Height="30" CornerRadius="8" Margin="0,0,0,28">
@@ -216,6 +224,24 @@
                         </StackPanel>
 
                         <StackPanel VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,28">
+                            <Button x:Name="BrowserRailButton" Margin="0,0,0,12"
+                                    Cursor="Hand" Click="BrowserRailButton_Click">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border x:Name="BrowserRailBorder" Width="42" Height="42" CornerRadius="12"
+                                                Background="#0FFFFFFF" BorderThickness="1" BorderBrush="Transparent">
+                                            <TextBlock Text="Web" FontSize="9.5" FontWeight="Bold"
+                                                       Foreground="#C7C7D1" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="BrowserRailBorder" Property="Background" Value="{DynamicResource Theme.AccentPrimaryTintBrush}"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Button.Template>
+                            </Button>
+
                             <Button x:Name="UpdatesRailButton" Margin="0,0,0,12"
                                     Cursor="Hand" Click="UpdatesRailButton_Click">
                                 <Button.Template>
@@ -260,10 +286,17 @@
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                         <RowDefinition Height="Auto"/>
+                        <!-- Apps row. Auto so it takes only what it needs and the hero
+                             keeps the rest; the games row above stays the star. -->
+                        <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
-                    <!-- Top status line -->
-                    <Grid Grid.Row="0" Margin="0,26,0,0">
+                    <!-- Top status line. Named + transform so the first-run entrance
+                         can drop it in from above the screen edge. -->
+                    <Grid x:Name="TopStatusBar" Grid.Row="0" Margin="0,26,0,0">
+                        <Grid.RenderTransform>
+                            <TranslateTransform x:Name="TopStatusSlide"/>
+                        </Grid.RenderTransform>
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,16,0">
                                 <Border Width="24" Height="12" CornerRadius="2" BorderBrush="#B8B8C2" BorderThickness="1.5"
@@ -293,7 +326,13 @@
                         HERO — binds to FocusedGame. Everything here swaps when focus
                         moves along the row below.
                     -->
-                    <StackPanel x:Name="HeroPanel" Grid.Row="1" VerticalAlignment="Center" MaxWidth="620"
+                    <!-- Anchored to the BOTTOM of its row, not centred.
+                         A downloading game adds a percentage, a size and a progress bar
+                         to this panel; centred, that extra height grows in both
+                         directions and pushes the platform/DOWNLOADING labels off the top
+                         of the screen. Bottom-anchored, it grows upward into the empty
+                         space above, which is exactly where there is room for it. -->
+                    <StackPanel x:Name="HeroPanel" Grid.Row="1" VerticalAlignment="Bottom" MaxWidth="620"
                                 HorizontalAlignment="Left" Margin="0,0,0,10">
                         <StackPanel.RenderTransform>
                             <TranslateTransform x:Name="HeroSlide" Y="0"/>
@@ -314,12 +353,32 @@
                             </Border>
                         </StackPanel>
 
-                        <TextBlock Text="{Binding GameName}" FontSize="58" FontWeight="Bold"
-                                   Foreground="White" TextWrapping="Wrap" LineHeight="58"
-                                   Margin="0,0,0,18"/>
+                        <!-- Trimmed for a downloading game: the progress block below adds
+                             about 70px, which on a 720p screen is the difference between
+                             fitting and pushing the platform labels off the top. -->
+                        <TextBlock Text="{Binding GameName}" FontWeight="Bold"
+                                   Foreground="White" TextWrapping="Wrap">
+                            <TextBlock.Style>
+                                <!-- Size lives ENTIRELY in the style, defaults included:
+                                     a local FontSize attribute would outrank the trigger
+                                     and the shrink would silently never apply. -->
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="FontSize" Value="58"/>
+                                    <Setter Property="LineHeight" Value="58"/>
+                                    <Setter Property="Margin" Value="0,0,0,18"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsDownloading}" Value="True">
+                                            <Setter Property="FontSize" Value="44"/>
+                                            <Setter Property="LineHeight" Value="46"/>
+                                            <Setter Property="Margin" Value="0,0,0,12"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
 
                         <!-- Download progress, only while this game is downloading -->
-                        <StackPanel Margin="0,0,0,20" Width="420" HorizontalAlignment="Left"
+                        <StackPanel Margin="0,0,0,14" Width="420" HorizontalAlignment="Left"
                                     Visibility="{Binding IsDownloading, Converter={StaticResource BoolToVisibilityConverter}}">
                             <Grid Margin="0,0,0,8">
                                 <TextBlock Text="{Binding ProgressPercent, StringFormat={}{0:0}%}" FontSize="20" FontWeight="Bold"
@@ -398,7 +457,7 @@
 
                     <!-- GAME ROW — single horizontal strip of square cover tiles -->
                     <ScrollViewer x:Name="GameRowScroller" Grid.Row="2" HorizontalScrollBarVisibility="Hidden"
-                                  VerticalScrollBarVisibility="Disabled" Margin="0,0,0,34"
+                                  VerticalScrollBarVisibility="Disabled" Margin="0,0,0,26"
                                   DataContext="{Binding DataContext, RelativeSource={RelativeSource AncestorType=Window}}">
                         <ItemsControl x:Name="GameRowItems" ItemsSource="{Binding Games}"
                                       ItemTemplate="{StaticResource SpotlightTileTemplate}">
@@ -409,6 +468,119 @@
                             </ItemsControl.ItemsPanel>
                         </ItemsControl>
                     </ScrollViewer>
+
+                    <!-- APPS ROW — the app drawer. Wider-than-tall tiles so they read as
+                         a different KIND of thing to the square game covers rather than
+                         looking like games that lost their art. Slides in with the rest
+                         of the dashboard on first run. -->
+                    <StackPanel x:Name="AppRow" Grid.Row="3" Margin="0,0,0,30"
+                                DataContext="{Binding DataContext, RelativeSource={RelativeSource AncestorType=Window}}">
+                        <StackPanel.RenderTransform>
+                            <TranslateTransform x:Name="AppRowSlide"/>
+                        </StackPanel.RenderTransform>
+
+                        <Grid Margin="0,0,0,12">
+                            <TextBlock Text="APPS" FontSize="11" FontWeight="Bold"
+                                       Foreground="#6E6E7D" VerticalAlignment="Center"/>
+
+                            <!-- Mini-player. Only appears once something is playing, so
+                                 the dashboard is not carrying an empty music widget
+                                 around. Sits on the APPS label's line to avoid taking a
+                                 row of its own from the games. -->
+                            <Border x:Name="MiniPlayer" Visibility="Collapsed"
+                                    HorizontalAlignment="Right" VerticalAlignment="Center"
+                                    CornerRadius="10" Padding="12,7" Background="#14FFFFFF"
+                                    BorderBrush="#2A2F3A" BorderThickness="1">
+                                <StackPanel Orientation="Horizontal">
+                                    <Border Width="26" Height="26" CornerRadius="5"
+                                            Background="#1AFFFFFF" ClipToBounds="True"
+                                            Margin="0,0,10,0">
+                                        <Image x:Name="MiniPlayerArt" Stretch="UniformToFill"/>
+                                    </Border>
+
+                                    <StackPanel VerticalAlignment="Center" MaxWidth="200"
+                                                Margin="0,0,12,0">
+                                        <TextBlock x:Name="MiniPlayerTitle" Text="" FontSize="12"
+                                                   FontWeight="SemiBold" Foreground="#E8EAE6"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock x:Name="MiniPlayerArtist" Text="" FontSize="10.5"
+                                                   Foreground="#8A9099"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                    </StackPanel>
+
+                                    <TextBlock x:Name="MiniPlayerIcon" Text="♪" FontSize="15"
+                                               VerticalAlignment="Center"
+                                               Foreground="{DynamicResource Theme.AccentPrimaryBrush}"/>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+
+                        <ItemsControl x:Name="AppRowItems" ItemsSource="{Binding Apps}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal"/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border x:Name="AppTile" Width="168" Height="96" Margin="0,0,16,0"
+                                            CornerRadius="14" Background="{Binding Art}"
+                                            BorderBrush="Transparent" BorderThickness="2.5"
+                                            Cursor="Hand" MouseLeftButtonUp="AppTile_Click"
+                                            Tag="{Binding}">
+                                        <Border.RenderTransform>
+                                            <ScaleTransform x:Name="AppTileScale" CenterX="84" CenterY="48"
+                                                            ScaleX="1" ScaleY="1"/>
+                                        </Border.RenderTransform>
+                                        <Grid Margin="16,14">
+                                            <Path Data="{Binding Glyph}" Fill="{Binding Foreground}"
+                                                  Stretch="Uniform"
+                                                  Width="42" HorizontalAlignment="Left"
+                                                  VerticalAlignment="Top" Opacity="0.95"/>
+                                            <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="Bold"
+                                                       Foreground="{Binding Foreground}"
+                                                       VerticalAlignment="Bottom"/>
+                                        </Grid>
+                                    </Border>
+                                    <DataTemplate.Triggers>
+                                        <DataTrigger Binding="{Binding IsFocused}" Value="True">
+                                            <Setter TargetName="AppTile" Property="BorderBrush" Value="White"/>
+                                            <Setter TargetName="AppTile" Property="Effect">
+                                                <Setter.Value>
+                                                    <DropShadowEffect BlurRadius="26" ShadowDepth="0"
+                                                                      Opacity="0.55" Color="Black"/>
+                                                </Setter.Value>
+                                            </Setter>
+                                            <DataTrigger.EnterActions>
+                                                <BeginStoryboard>
+                                                    <Storyboard>
+                                                        <DoubleAnimation Storyboard.TargetName="AppTileScale"
+                                                                         Storyboard.TargetProperty="ScaleX"
+                                                                         To="1.06" Duration="0:0:0.18"/>
+                                                        <DoubleAnimation Storyboard.TargetName="AppTileScale"
+                                                                         Storyboard.TargetProperty="ScaleY"
+                                                                         To="1.06" Duration="0:0:0.18"/>
+                                                    </Storyboard>
+                                                </BeginStoryboard>
+                                            </DataTrigger.EnterActions>
+                                            <DataTrigger.ExitActions>
+                                                <BeginStoryboard>
+                                                    <Storyboard>
+                                                        <DoubleAnimation Storyboard.TargetName="AppTileScale"
+                                                                         Storyboard.TargetProperty="ScaleX"
+                                                                         To="1" Duration="0:0:0.18"/>
+                                                        <DoubleAnimation Storyboard.TargetName="AppTileScale"
+                                                                         Storyboard.TargetProperty="ScaleY"
+                                                                         To="1" Duration="0:0:0.18"/>
+                                                    </Storyboard>
+                                                </BeginStoryboard>
+                                            </DataTrigger.ExitActions>
+                                        </DataTrigger>
+                                    </DataTemplate.Triggers>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
                 </Grid>
             </Grid>
         </Grid>
@@ -424,12 +596,6 @@
              Splash concept. Never actually starts a process — see LaunchOverlay.xaml.cs. -->
         <local:LaunchOverlay x:Name="LaunchTakeover"/>
 
-        <!-- Quick-access side menu (plan.md §9.1), toggled by Tab — stands in for
-             the real gamepad Guide/Home button, which this laptop has no physical
-             controller bound to. Sits above the launch overlay too, so it's always
-             reachable regardless of what's on screen underneath. -->
-        <local:GuideMenu x:Name="Guide"/>
-
         <!-- Controller setup wizard, opened on demand from the Guide Menu. Sits above
              everything, including the Guide Menu itself. -->
         <local:ControllerWizard x:Name="ControllerSetup"/>
@@ -441,5 +607,151 @@
         <!-- Settings screen, opened from its own dedicated rail button. Theme
              section is real (ThemeManager); Display/Audio are visual-only mocks. -->
         <local:SettingsScreen x:Name="Settings"/>
+
+        <!-- Launch blocked (parental controls): shown when a child device refuses a
+             game. The reason drives the message; "Ask a parent" queues a request. -->
+        <Grid x:Name="LaunchBlocked" Panel.ZIndex="70" Visibility="Collapsed" Opacity="0">
+            <Border Background="#D8060709"/>
+            <Border HorizontalAlignment="Center" VerticalAlignment="Center" Width="460"
+                    CornerRadius="16" Padding="40,36" Background="#F00E1016"
+                    BorderBrush="#2A2F3A" BorderThickness="1">
+                <StackPanel>
+                    <TextBlock x:Name="BlockedIcon" Text="🔒" FontSize="40" HorizontalAlignment="Center"/>
+                    <TextBlock x:Name="BlockedTitle" Text="Ask a parent" FontSize="24" FontWeight="SemiBold"
+                               Foreground="#F2F4F0" HorizontalAlignment="Center" Margin="0,16,0,0"/>
+                    <TextBlock x:Name="BlockedReason" FontSize="15" Foreground="#9AA0A8"
+                               HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"
+                               Margin="0,10,0,0" Text=""/>
+
+                    <StackPanel x:Name="BlockedButtons" Orientation="Horizontal"
+                                HorizontalAlignment="Center" Margin="0,28,0,0">
+                        <Border x:Name="AskParentButton" Cursor="Hand" CornerRadius="9" Padding="26,12"
+                                Margin="0,0,12,0" Background="{DynamicResource Theme.AccentPrimaryBrush}"
+                                MouseLeftButtonUp="AskParent_Click">
+                            <TextBlock Text="Ask a parent" FontSize="14" FontWeight="SemiBold" Foreground="#06070B"/>
+                        </Border>
+                        <Border x:Name="BlockedOkButton" Cursor="Hand" CornerRadius="9" Padding="26,12"
+                                Background="#1AFFFFFF" BorderBrush="#2A2F3A" BorderThickness="1"
+                                MouseLeftButtonUp="BlockedOk_Click">
+                            <TextBlock Text="OK" FontSize="14" FontWeight="SemiBold" Foreground="#E8EAE6"/>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- Confirmation shown after "Ask a parent" is pressed. -->
+                    <TextBlock x:Name="BlockedRequestSent" Visibility="Collapsed" FontSize="14"
+                               Foreground="{DynamicResource Theme.AccentPrimaryBrush}"
+                               HorizontalAlignment="Center" Margin="0,26,0,0"
+                               Text="✓ Asked. A parent will see your request."/>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- Web browser: its own screen, ambient video behind. Restrictions only apply
+             on a child device — see docs/browser-design.md. -->
+        <local:BrowserScreen x:Name="Browser"/>
+
+        <!-- Music: YouTube's own TV interface, parked off-screen while it plays in the
+             background and slid on screen when the user opens the Music app. Shown
+             directly rather than wrapped in a screen of ours — it is already built for a
+             D-pad and carries Google's phone-code sign-in, which a custom screen could
+             not offer. -->
+        <Grid x:Name="MusicHost" ClipToBounds="True"/>
+
+        <!-- Now-playing toast: a brief word bottom-left whenever the track changes, so
+             the user knows what came on without opening anything. -->
+        <Border x:Name="MusicToast" Visibility="Collapsed" Opacity="0"
+                HorizontalAlignment="Left" VerticalAlignment="Top"
+                Margin="44,32,0,0" MaxWidth="380" CornerRadius="12" Padding="16,13"
+                Background="#F00E1016" BorderBrush="#2A2F3A" BorderThickness="1"
+                IsHitTestVisible="False">
+            <!-- Drops in from above rather than sliding from the side, now that it lives
+                 at the top of the screen. -->
+            <Border.RenderTransform>
+                <TranslateTransform x:Name="MusicToastSlide"/>
+            </Border.RenderTransform>
+            <Border.Effect>
+                <DropShadowEffect Color="#000000" BlurRadius="30" ShadowDepth="0" Opacity="0.5"/>
+            </Border.Effect>
+            <StackPanel Orientation="Horizontal">
+                <Border Width="44" Height="44" CornerRadius="8" Margin="0,0,14,0"
+                        Background="#1AFFFFFF" ClipToBounds="True">
+                    <Image x:Name="MusicToastArt" Stretch="UniformToFill"/>
+                </Border>
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock x:Name="MusicToastKicker" Text="NOW PLAYING" FontSize="10"
+                               FontWeight="Bold" Margin="0,0,0,4"
+                               Foreground="{DynamicResource Theme.AccentPrimaryBrush}"/>
+                    <TextBlock x:Name="MusicToastTitle" Text="" FontSize="14" FontWeight="SemiBold"
+                               Foreground="#F2F4F0" TextTrimming="CharacterEllipsis"/>
+                    <TextBlock x:Name="MusicToastArtist" Text="" FontSize="12"
+                               Foreground="#8A9099" TextTrimming="CharacterEllipsis"/>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- Quick-access side menu (plan.md §9.1), toggled by Tab / the controller's
+             MENU button. Declared AFTER the browser deliberately: WPF paints siblings in
+             document order, so declaring it earlier put it behind the browser's opaque
+             background, where it rendered dimmed and unusable. It must sit above every
+             screen it can be opened over. -->
+        <local:GuideMenu x:Name="Guide"/>
+
+        <!-- Patch notes ("what's new") shown after a software update, opened from the
+             Updated toast. Ambient video stays behind it. -->
+        <local:PatchNotesScreen x:Name="PatchNotes"/>
+
+        <!-- "Updated" confirmation toast: appears bottom-right on the first boot after
+             an update, offering the patch notes rather than forcing them. Dismisses on
+             its own after a while so it never lingers. -->
+        <Border x:Name="UpdatedToast" Panel.ZIndex="60" Visibility="Collapsed" Opacity="0"
+                HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,44,44"
+                Width="340" CornerRadius="12" Padding="22,18"
+                Background="#F00E1016" BorderBrush="{DynamicResource Theme.AccentPrimaryBrush}"
+                BorderThickness="1">
+            <Border.Effect>
+                <DropShadowEffect Color="#000000" BlurRadius="34" ShadowDepth="0" Opacity="0.5"/>
+            </Border.Effect>
+            <StackPanel>
+                <TextBlock x:Name="UpdatedToastKicker" Text="✓ UPDATED" FontSize="11" FontWeight="Bold"
+                           Foreground="{DynamicResource Theme.AccentPrimaryBrush}"/>
+                <TextBlock x:Name="UpdatedToastTitle" Text="Now on version 1.4.0" FontSize="16" FontWeight="SemiBold"
+                           Foreground="#F2F4F0" Margin="0,10,0,0"/>
+                <TextBlock x:Name="UpdatedToastBody" Text="Faster library scanning, and the controller fix."
+                           FontSize="13" Foreground="#8A9099" Margin="0,6,0,0" TextWrapping="Wrap"/>
+                <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
+                    <Border x:Name="SeeWhatsNewButton" Cursor="Hand" CornerRadius="7" Padding="18,9"
+                            Margin="0,0,10,0" Background="{DynamicResource Theme.AccentPrimaryBrush}"
+                            MouseLeftButtonUp="SeeWhatsNew_Click">
+                        <TextBlock Text="See what's new" FontSize="13" FontWeight="SemiBold" Foreground="#06070B"/>
+                    </Border>
+                    <Border x:Name="DismissUpdatedButton" Cursor="Hand" CornerRadius="7" Padding="18,9"
+                            Background="#1AFFFFFF" BorderBrush="#2A2F3A" BorderThickness="1"
+                            MouseLeftButtonUp="DismissUpdated_Click">
+                        <TextBlock Text="Dismiss" FontSize="13" FontWeight="SemiBold" Foreground="#E8EAE6"/>
+                    </Border>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- Driver install takeover (plan.md §6.1) — locks the UI while a driver
+             installs. Topmost of everything; nothing can be reached over it. -->
+        <local:DriverInstallTakeover x:Name="DriverInstall"/>
+
+        <!-- First-run setup. Sits above the dashboard and the other overlays, but
+             BELOW the boot screen — boot's aperture has to open onto this, so it must
+             be painted underneath while that animation runs. Collapsed by default, so
+             a configured console never pays for it. -->
+        <local:SetupWizard x:Name="Setup"/>
+
+        <!-- Boot screen. Declared LAST so it covers everything, and starts visible so
+             it is already on screen at the first rendered frame — otherwise the blank
+             moment it exists to hide would still flash before it appeared.
+
+             Every overlay in this Grid relies on DECLARATION ORDER alone, with no
+             Panel.ZIndex anywhere. Keep it that way: SetupWizard briefly carried a
+             ZIndex of 90, which put it above this boot screen no matter that it is
+             declared earlier, and the entire aperture reveal animated invisibly
+             underneath it. -->
+        <local:BootScreen x:Name="Boot"/>
     </Grid>
 </Window>

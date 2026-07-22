@@ -1,0 +1,259 @@
+<UserControl x:Class="UI.BrowserScreen"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+             Visibility="Collapsed">
+
+    <UserControl.Resources>
+        <Style x:Key="ChromeButtonStyle" TargetType="Border">
+            <Setter Property="Width" Value="38"/>
+            <Setter Property="Height" Value="38"/>
+            <Setter Property="Margin" Value="0,0,8,0"/>
+            <Setter Property="CornerRadius" Value="9"/>
+            <Setter Property="Background" Value="#14FFFFFF"/>
+            <Setter Property="BorderBrush" Value="#2A2F3A"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="BorderBrush" Value="{DynamicResource Theme.AccentPrimaryBrush}"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </UserControl.Resources>
+
+    <!-- Own console screen, same overlay treatment as Updates/Settings: the ambient
+         video keeps playing behind, and MainWindow hides the dashboard content while
+         this is up. Unlike those, the body is opaque — web pages assume a solid
+         background and letting the video show through would make text unreadable. -->
+    <Grid x:Name="Root" Background="#F2080A0F">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- ============ CHROME ============
+             Collapsed entirely on a full-screen page (leanback) — a TV interface should
+             not sit in a box with a browser toolbar around it. -->
+        <Grid x:Name="ChromeBar" Grid.Row="0" Margin="28,20,28,14">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                <Border x:Name="BackButton" Style="{StaticResource ChromeButtonStyle}"
+                        MouseLeftButtonUp="Back_Click">
+                    <TextBlock Text="‹" FontSize="20" FontWeight="Bold" Foreground="#E8EAE6"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-4,0,0"/>
+                </Border>
+                <Border x:Name="ForwardButton" Style="{StaticResource ChromeButtonStyle}"
+                        MouseLeftButtonUp="Forward_Click">
+                    <TextBlock Text="›" FontSize="20" FontWeight="Bold" Foreground="#E8EAE6"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-4,0,0"/>
+                </Border>
+                <Border x:Name="ReloadButton" Style="{StaticResource ChromeButtonStyle}"
+                        MouseLeftButtonUp="Reload_Click">
+                    <TextBlock Text="⟳" FontSize="15" Foreground="#E8EAE6"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+            </StackPanel>
+
+            <Border Grid.Column="1" Margin="14,0" CornerRadius="9" Background="#B80E1016"
+                    BorderBrush="#2A2F3A" BorderThickness="1" Padding="16,9">
+                <TextBlock x:Name="AddressText" Text="Start browsing" FontSize="14"
+                           Foreground="#C7CAC4" VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis"/>
+            </Border>
+
+            <Border Grid.Column="2" x:Name="CloseButton" Style="{StaticResource ChromeButtonStyle}"
+                    MouseLeftButtonUp="Close_Click">
+                <TextBlock Text="✕" FontSize="13" Foreground="#E8EAE6"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+        </Grid>
+
+        <!-- ============ CONTENT ============ -->
+        <Grid x:Name="ContentArea" Grid.Row="1" Margin="28,0,28,0">
+            <Border x:Name="ContentFrame" CornerRadius="10" ClipToBounds="True"
+                    BorderBrush="#21252E" BorderThickness="1">
+                <Grid>
+                    <!-- The web view. Created lazily in code so a missing WebView2
+                         runtime shows the message below instead of crashing. -->
+                    <wv2:WebView2 x:Name="Web" Visibility="Collapsed"/>
+
+                    <!-- Shown before the first navigation, and whenever the browser
+                         cannot run at all. -->
+                    <StackPanel x:Name="Placeholder" HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <TextBlock x:Name="PlaceholderTitle" Text="Browser" FontSize="22" FontWeight="SemiBold"
+                                   Foreground="#8A9099" HorizontalAlignment="Center"/>
+                        <TextBlock x:Name="PlaceholderBody" FontSize="14" Foreground="#5A606A"
+                                   HorizontalAlignment="Center" Margin="0,10,0,0" MaxWidth="420"
+                                   TextAlignment="Center" TextWrapping="Wrap"
+                                   Text="Loading…"/>
+                    </StackPanel>
+
+                    <!-- Home: the start screen. A blank page leaves a controller-only
+                         user with nowhere to go and no way to type, so the browser opens
+                         on a small set of destinations instead. -->
+                    <StackPanel x:Name="HomeScreen" Visibility="Collapsed"
+                                HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <TextBlock Text="WHERE TO?" FontSize="11" FontWeight="Bold" Margin="0,0,0,22"
+                                   Foreground="{DynamicResource Theme.AccentPrimaryBrush}"
+                                   HorizontalAlignment="Center"/>
+                        <ItemsControl x:Name="HomeTiles">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal"/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border x:Name="TileBorder" Width="150" Height="110" Margin="0,0,14,0"
+                                            CornerRadius="12" Background="#B80E1016"
+                                            BorderBrush="#2A2F3A" BorderThickness="1.5" Cursor="Hand"
+                                            MouseLeftButtonUp="HomeTile_Click">
+                                        <StackPanel VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Glyph}" FontSize="26"
+                                                       HorizontalAlignment="Center"/>
+                                            <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="SemiBold"
+                                                       Foreground="#E8EAE6" HorizontalAlignment="Center"
+                                                       Margin="0,10,0,0"/>
+                                        </StackPanel>
+                                    </Border>
+                                    <DataTemplate.Triggers>
+                                        <DataTrigger Binding="{Binding IsFocused}" Value="True">
+                                            <Setter TargetName="TileBorder" Property="BorderBrush"
+                                                    Value="{DynamicResource Theme.AccentPrimaryBrush}"/>
+                                            <Setter TargetName="TileBorder" Property="Background" Value="#1FA8E03B"/>
+                                        </DataTrigger>
+                                    </DataTemplate.Triggers>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- Controller cursor. A web page has no fixed focusable tiles, so the
+                 stick drives a pointer rather than trying to hop between elements. -->
+            <Canvas x:Name="CursorLayer" IsHitTestVisible="False">
+                <Ellipse x:Name="Cursor" Width="18" Height="18" Visibility="Collapsed"
+                         Fill="#66A8E03B" Stroke="{DynamicResource Theme.AccentPrimaryBrush}"
+                         StrokeThickness="2"/>
+            </Canvas>
+
+            <!-- How to get out, shown briefly when a full-screen page loads.
+                 The hint bar is hidden on those pages, so without this the only way back
+                 is a button combination nothing on screen mentions. Fades on its own
+                 rather than sitting over the video permanently. -->
+            <Border x:Name="ExitHint" Visibility="Collapsed" Opacity="0"
+                    HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,26,0,0"
+                    CornerRadius="20" Background="#CC0E1016" BorderBrush="#2A2F3A"
+                    BorderThickness="1" Padding="20,11" IsHitTestVisible="False">
+                <TextBlock FontSize="13.5" Foreground="#E8EAE6">
+                    <Run Text="Hold" Foreground="#8A9099"/>
+                    <Run Text=" B " FontWeight="Bold"
+                         Foreground="{DynamicResource Theme.AccentPrimaryBrush}"/>
+                    <Run Text="to leave" Foreground="#8A9099"/>
+                </TextBlock>
+            </Border>
+
+            <!-- ============ EXIT CONFIRMATION ============
+                 Asked before leaving a site, so a held button never silently throws away
+                 what someone was watching. Like the permission prompt, this requires the
+                 page to be hidden first — WebView2 paints over WPF content, so a dialog
+                 drawn on top of a live page is simply invisible. -->
+            <Grid x:Name="ExitPrompt" Visibility="Collapsed" Background="#D8080A0F">
+                <Border MaxWidth="480" CornerRadius="14" Background="#F20E1016"
+                        BorderBrush="#2A2F3A" BorderThickness="1" Padding="30,26"
+                        HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <StackPanel>
+                        <TextBlock Text="LEAVE" FontSize="11" FontWeight="Bold"
+                                   Foreground="{DynamicResource Theme.AccentPrimaryBrush}"
+                                   Margin="0,0,0,12"/>
+                        <TextBlock x:Name="ExitQuestion" FontSize="18" Foreground="#E8EAE6"
+                                   TextWrapping="Wrap" LineHeight="26" Text="Close YouTube?"/>
+                        <TextBlock x:Name="ExitDetail" FontSize="12.5" Foreground="#8A9099"
+                                   Margin="0,10,0,0" TextWrapping="Wrap"
+                                   Text="You'll go back to the console."/>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,22,0,0">
+                            <Border x:Name="ExitConfirmButton" Width="150" Height="44"
+                                    CornerRadius="10" Background="#14FFFFFF"
+                                    BorderBrush="#2A2F3A" BorderThickness="1.5"
+                                    Margin="0,0,12,0" Cursor="Hand"
+                                    MouseLeftButtonUp="ExitConfirm_Click">
+                                <TextBlock Text="Close" FontSize="14" FontWeight="SemiBold"
+                                           Foreground="#E8EAE6" HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"/>
+                            </Border>
+                            <Border x:Name="ExitCancelButton" Width="150" Height="44"
+                                    CornerRadius="10" Background="#14FFFFFF"
+                                    BorderBrush="#2A2F3A" BorderThickness="1.5" Cursor="Hand"
+                                    MouseLeftButtonUp="ExitCancel_Click">
+                                <TextBlock Text="Keep watching" FontSize="14" FontWeight="SemiBold"
+                                           Foreground="#E8EAE6" HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"/>
+                            </Border>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <!-- ============ PERMISSION PROMPT ============
+                 The console's own answer to a page asking for the microphone or similar.
+                 Chromium's built-in dialog is mouse-driven, so a controller-only user
+                 would be stranded by it; this one is navigable with the D-pad and
+                 defaults to Deny. Covers the content area only, so it is obvious which
+                 page is asking. -->
+            <Grid x:Name="PermissionPrompt" Visibility="Collapsed" Background="#D8080A0F">
+                <Border MaxWidth="520" CornerRadius="14" Background="#F20E1016"
+                        BorderBrush="#2A2F3A" BorderThickness="1" Padding="30,26"
+                        HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <StackPanel>
+                        <TextBlock Text="PERMISSION" FontSize="11" FontWeight="Bold"
+                                   Foreground="{DynamicResource Theme.AccentPrimaryBrush}"
+                                   Margin="0,0,0,12"/>
+                        <TextBlock x:Name="PermissionQuestion" FontSize="17" Foreground="#E8EAE6"
+                                   TextWrapping="Wrap" LineHeight="25" Text=""/>
+                        <TextBlock FontSize="12.5" Foreground="#8A9099" Margin="0,12,0,0"
+                                   TextWrapping="Wrap"
+                                   Text="You can say no — the page will keep working without it."/>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,22,0,0">
+                            <Border x:Name="PermissionAllow" Width="150" Height="44"
+                                    CornerRadius="10" Background="#14FFFFFF"
+                                    BorderBrush="#2A2F3A" BorderThickness="1.5"
+                                    Margin="0,0,12,0" Cursor="Hand"
+                                    MouseLeftButtonUp="PermissionAllow_Click">
+                                <TextBlock Text="Allow" FontSize="14" FontWeight="SemiBold"
+                                           Foreground="#E8EAE6" HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"/>
+                            </Border>
+                            <Border x:Name="PermissionDeny" Width="150" Height="44"
+                                    CornerRadius="10" Background="#14FFFFFF"
+                                    BorderBrush="#2A2F3A" BorderThickness="1.5" Cursor="Hand"
+                                    MouseLeftButtonUp="PermissionDeny_Click">
+                                <TextBlock Text="Don't allow" FontSize="14" FontWeight="SemiBold"
+                                           Foreground="#E8EAE6" HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"/>
+                            </Border>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Grid>
+
+        <!-- ============ HINTS ============ -->
+        <Grid x:Name="HintBar" Grid.Row="2" Margin="28,14,28,20">
+            <TextBlock x:Name="StatusText" HorizontalAlignment="Left" FontSize="12"
+                       Foreground="#5A606A" VerticalAlignment="Center" Text=""/>
+            <TextBlock x:Name="ButtonHints" HorizontalAlignment="Right" FontSize="12"
+                       Foreground="#5A606A" VerticalAlignment="Center"
+                       Text="Stick  Move        A  Click        B  Back        MENU  Close"/>
+        </Grid>
+    </Grid>
+</UserControl>

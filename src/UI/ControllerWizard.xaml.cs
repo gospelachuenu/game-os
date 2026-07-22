@@ -63,6 +63,8 @@ public partial class ControllerWizard : UserControl
         BeginAnimation(OpacityProperty, fadeOut);
     }
 
+    private void DoneButton_Click(object sender, RoutedEventArgs e) => Hide();
+
     private void Poll()
     {
         foreach (var slot in Slots)

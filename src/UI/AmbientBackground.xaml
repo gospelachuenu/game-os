@@ -7,9 +7,16 @@
     <!--
         Ambient background: a looping, muted video clip (Assets/ambient_loop.mp4 -
         a trimmed, slowed-down, seamlessly-crossfaded segment derived from the user's
-        source footage) stretched to fill the window. A BlurEffect on the video fakes
-        a frosted-glass look (WPF has no native Acrylic/Mica backdrop blur), and a
-        translucent dark scrim sits on top so foreground text/tiles stay legible.
+        source footage) stretched to fill the window, with a translucent dark scrim on
+        top so foreground text/tiles stay legible.
+
+        THE BLUR IS BAKED INTO THE VIDEO FILE, not applied at runtime. It used to be a
+        WPF BlurEffect (radius 28) on BOTH players — a full-frame per-pixel shader,
+        running twice, every frame, forever, on a machine whose whole job is to leave
+        headroom for games. Pre-blurring with ffmpeg (gblur sigma=9) gives an identical
+        look for zero GPU cost, and as a bonus the blurred footage compresses far
+        better: the asset went from 2.4 MB to 584 KB. The unblurred source is kept as
+        ambient_loop_original.mp4 in case the look ever needs re-tuning.
 
         Two overlapping MediaElements (PlayerA/PlayerB) crossfade into each other
         near the loop point instead of one player hard-restarting (Position=0 + Play())
@@ -22,22 +29,14 @@
                       UnloadedBehavior="Manual"
                       Stretch="UniformToFill"
                       IsMuted="True"
-                      Loaded="PlayerA_Loaded">
-            <MediaElement.Effect>
-                <BlurEffect Radius="28" KernelType="Gaussian"/>
-            </MediaElement.Effect>
-        </MediaElement>
+                      Loaded="PlayerA_Loaded"/>
 
         <MediaElement x:Name="PlayerB"
                       LoadedBehavior="Manual"
                       UnloadedBehavior="Manual"
                       Stretch="UniformToFill"
                       IsMuted="True"
-                      Opacity="0">
-            <MediaElement.Effect>
-                <BlurEffect Radius="28" KernelType="Gaussian"/>
-            </MediaElement.Effect>
-        </MediaElement>
+                      Opacity="0"/>
 
         <!-- Frosted tint: a soft translucent white wash on top of the blur reads as
              "frosted glass" rather than just a blurred video, plus the existing dark

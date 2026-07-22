@@ -21,6 +21,9 @@ public partial class UpdatesScreen : UserControl
 
     public event EventHandler? CloseRequested;
 
+    /// <summary>Raised when an AMD driver update is installed — MainWindow answers with the locked full-screen takeover (plan.md §6.1).</summary>
+    public event Action<UpdateItemViewModel>? DriverInstallRequested;
+
     public static readonly DependencyProperty InstallButtonHighlightProperty =
         DependencyProperty.Register(nameof(InstallButtonHighlight), typeof(Brush), typeof(UpdatesScreen), new PropertyMetadata(Brushes.Transparent));
 
@@ -218,6 +221,14 @@ public partial class UpdatesScreen : UserControl
         // that slides into its place, rather than lingering as a dead "Installed" row.
         if (selected.State == UpdateItemState.ReadyToInstall)
         {
+            // AMD driver installs take over the whole screen with the locked-controls
+            // modal and its flicker warning (plan.md §6.1/§6.2). Windows updates just
+            // complete quietly here.
+            if (selected.Kind == UpdateKind.AmdDriver)
+            {
+                DriverInstallRequested?.Invoke(selected);
+            }
+
             var next = ViewModel.RemoveCompleted(selected);
             if (next is not null)
             {

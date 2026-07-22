@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
+
+  <assemblyIdentity version="1.0.0.0" name="GamingOS.UI"/>
+
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <!--
+        PER-MONITOR DPI AWARENESS.
+
+        Without this the app is only system-DPI-aware, so on a scaled display Windows
+        hands it a shrunken logical viewport — at 150% scaling a 1280x720 screen becomes
+        roughly 853x480 as far as the app is concerned.
+
+        That matters most for the browser: WebView2 reports that reduced viewport to the
+        page, so YouTube decides it is on a small screen and serves a lower-resolution
+        layout and video accordingly. Declaring real DPI awareness gives the page the
+        actual pixels available.
+
+        Both keys are present deliberately: PerMonitorV2 is honoured by Windows 10 1703
+        and later, dpiAware is the fallback for anything older.
+      -->
+      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2</dpiAwareness>
+      <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">true/PM</dpiAware>
+    </windowsSettings>
+  </application>
+
+  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+    <application>
+      <!-- Windows 10 / 11 -->
+      <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}"/>
+    </application>
+  </compatibility>
+
+</assembly>
