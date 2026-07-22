@@ -61,6 +61,13 @@ public sealed class GamepadInputPoller
     public event Action? ToggleGuideMenu;
 
     /// <summary>
+    /// X and Y. Added for the on-screen keyboard, where backspace and shift want their
+    /// own buttons rather than costing a trip across the grid to reach a key.
+    /// </summary>
+    public event Action? Secondary;
+    public event Action? Tertiary;
+
+    /// <summary>
     /// B held down rather than tapped.
     ///
     /// Exists because on a key-navigated page (YouTube's TV interface) a tap of B belongs
@@ -119,6 +126,8 @@ public sealed class GamepadInputPoller
         HandleButtonEdge(snapshot.Buttons, XInputButtons.DPadLeft, MoveLeft);
         HandleButtonEdge(snapshot.Buttons, XInputButtons.DPadRight, MoveRight);
         HandleButtonEdge(snapshot.Buttons, XInputButtons.A, Confirm);
+        HandleButtonEdge(snapshot.Buttons, XInputButtons.X, Secondary);
+        HandleButtonEdge(snapshot.Buttons, XInputButtons.Y, Tertiary);
         HandleBackButton(snapshot.Buttons);
 
         // Guide button is frequently intercepted by the OS/Xbox app before it ever
