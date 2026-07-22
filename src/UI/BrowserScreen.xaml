@@ -2,6 +2,7 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+             xmlns:local="clr-namespace:UI"
              Visibility="Collapsed">
 
     <UserControl.Resources>
@@ -61,11 +62,24 @@
                 </Border>
             </StackPanel>
 
-            <Border Grid.Column="1" Margin="14,0" CornerRadius="9" Background="#B80E1016"
-                    BorderBrush="#2A2F3A" BorderThickness="1" Padding="16,9">
-                <TextBlock x:Name="AddressText" Text="Start browsing" FontSize="14"
-                           Foreground="#C7CAC4" VerticalAlignment="Center"
-                           TextTrimming="CharacterEllipsis"/>
+            <!-- Pressable: opens the on-screen keyboard so a controller user can type an
+                 address. Was display-only, which left no way to go anywhere that was not
+                 already a start-screen tile. -->
+            <Border x:Name="AddressBar" Grid.Column="1" Margin="14,0" CornerRadius="9"
+                    Background="#B80E1016" BorderBrush="#2A2F3A" BorderThickness="1.5"
+                    Padding="16,9" Cursor="Hand" MouseLeftButtonUp="AddressBar_Click">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="AddressText" Text="Start browsing" FontSize="14"
+                               Foreground="#C7CAC4" VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis"/>
+                    <TextBlock Grid.Column="1" Text="Type" FontSize="11" FontWeight="Bold"
+                               Foreground="#5A606A" VerticalAlignment="Center"
+                               Margin="12,0,0,0"/>
+                </Grid>
             </Border>
 
             <Border Grid.Column="2" x:Name="CloseButton" Style="{StaticResource ChromeButtonStyle}"
@@ -80,9 +94,22 @@
             <Border x:Name="ContentFrame" CornerRadius="10" ClipToBounds="True"
                     BorderBrush="#21252E" BorderThickness="1">
                 <Grid>
-                    <!-- The web view. Created lazily in code so a missing WebView2
-                         runtime shows the message below instead of crashing. -->
+                    <!-- TWO web views, not one.
+                         Web        — ad-hoc browsing from the rail button.
+                         AppWeb     — the YouTube app.
+                         Separate so music can keep playing in the app while the user
+                         browses; sharing a single view meant opening the browser
+                         navigated away from whatever was playing, which left the browser
+                         effectively unreachable during playback.
+                         Both are created from the SAME CoreWebView2Environment: a user
+                         data folder allows only one WebView2 session, so two independently
+                         created environments pointing at one folder would fail. Sharing it
+                         also means one browser process between them and a single
+                         YouTube sign-in.
+                         Created lazily in code so a missing WebView2 runtime shows the
+                         message below instead of crashing. -->
                     <wv2:WebView2 x:Name="Web" Visibility="Collapsed"/>
+                    <wv2:WebView2 x:Name="AppWeb" Visibility="Collapsed"/>
 
                     <!-- Shown before the first navigation, and whenever the browser
                          cannot run at all. -->
@@ -255,5 +282,11 @@
                        Foreground="#5A606A" VerticalAlignment="Center"
                        Text="Stick  Move        A  Click        B  Back        MENU  Close"/>
         </Grid>
+
+        <!-- On-screen keyboard, for typing an address with a controller. Spans every row
+             and is declared LAST so it covers the chrome and the page beneath it. The
+             web view is hidden while it is up — WebView2 paints over WPF content, so a
+             keyboard drawn on top of a live page would be invisible. -->
+        <local:OnScreenKeyboard x:Name="Keyboard" Grid.Row="0" Grid.RowSpan="3"/>
     </Grid>
 </UserControl>

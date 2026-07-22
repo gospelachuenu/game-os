@@ -374,9 +374,14 @@ public partial class MainWindow : Window
 
             if (Browser.IsForeground)
             {
+                // The keyboard owns input while it is up — it is drawn over everything.
+                if (Browser.IsTyping) { Browser.MoveTypingSelection(0, -1); return; }
                 // Swallowed while a prompt is up: their buttons are side by side, so
                 // vertical movement means nothing and must not reach the page behind.
                 if (Browser.IsConfirmingExit || Browser.IsPromptingPermission) return;
+                // On the start screen, up reaches the address bar — the only way to get
+                // to it without a mouse.
+                if (Browser.IsOnHome) { Browser.MoveHomeVertical(-1); return; }
                 if (Browser.UsesKeyNavigation) Browser.SendKey(NativeKeyboard.VirtualKey.Up);
                 return;
             }
@@ -393,7 +398,9 @@ public partial class MainWindow : Window
 
             if (Browser.IsForeground)
             {
+                if (Browser.IsTyping) { Browser.MoveTypingSelection(0, 1); return; }
                 if (Browser.IsConfirmingExit || Browser.IsPromptingPermission) return;
+                if (Browser.IsOnHome) { Browser.MoveHomeVertical(1); return; }
                 if (Browser.UsesKeyNavigation) Browser.SendKey(NativeKeyboard.VirtualKey.Down);
                 return;
             }
@@ -420,6 +427,7 @@ public partial class MainWindow : Window
 
             if (Browser.IsForeground)
             {
+                if (Browser.IsTyping) { Browser.MoveTypingSelection(-1, 0); return; }
                 if (Browser.IsConfirmingExit) { Browser.MoveExitSelection(-1); return; }
                 // A permission prompt owns input while it is up — it must be answerable,
                 // and the page behind it must not react underneath.
@@ -442,6 +450,7 @@ public partial class MainWindow : Window
 
             if (Browser.IsForeground)
             {
+                if (Browser.IsTyping) { Browser.MoveTypingSelection(1, 0); return; }
                 if (Browser.IsConfirmingExit) { Browser.MoveExitSelection(1); return; }
                 if (Browser.IsPromptingPermission) Browser.MovePermissionSelection(1);
                 else if (Browser.IsOnHome) Browser.MoveHomeSelection(1);
@@ -476,7 +485,10 @@ public partial class MainWindow : Window
 
             if (Browser.IsForeground)
             {
-                if (Browser.IsConfirmingExit) Browser.ActivateExitSelection();
+                if (Browser.IsTyping) Browser.PressTypingKey();
+                // The address bar, when it has the highlight, opens the keyboard.
+                else if (Browser.IsAddressFocused) Browser.OpenAddressEntry();
+                else if (Browser.IsConfirmingExit) Browser.ActivateExitSelection();
                 else if (Browser.IsPromptingPermission) Browser.ConfirmPermission();
                 // Start screen opens a destination; leanback takes Enter; an ordinary
                 // page gets a click wherever the pointer is.
@@ -507,6 +519,8 @@ public partial class MainWindow : Window
 
             if (Browser.IsForeground)
             {
+                // Backing out of the keyboard abandons what was typed.
+                if (Browser.IsTyping) { Browser.CancelTyping(); return; }
                 // Backing out of the exit prompt means "no, stay".
                 if (Browser.IsConfirmingExit) { Browser.CancelExit(); return; }
                 // Backing out of a permission prompt declines it.
@@ -619,6 +633,10 @@ public partial class MainWindow : Window
             // is needed precisely while the offending page is in front of you.
             if (Browser.IsForeground)
             {
+                // While typing, MENU means "done" — the keyboard's own hint says so, and
+                // opening the guide over a half-typed address would be a strange answer.
+                if (Browser.IsTyping) { Browser.AcceptTyping(); return; }
+
                 if (Browser.IsPromptingPermission) Browser.CancelPermission();
                 ToggleGuideOverBrowser();
                 return;
@@ -626,6 +644,18 @@ public partial class MainWindow : Window
 
             if (!IsUiLocked) Guide.Toggle();
         };
+        // X and Y serve the on-screen keyboard only. Backspace and shift get their own
+        // buttons because reaching them across the grid is the slowest part of typing.
+        _gamepadPoller.Secondary += () =>
+        {
+            if (Browser.IsForeground && Browser.IsTyping) Browser.TypingBackspace();
+        };
+
+        _gamepadPoller.Tertiary += () =>
+        {
+            if (Browser.IsForeground && Browser.IsTyping) Browser.TypingShift();
+        };
+
         _musicToastTimer.Tick += (_, _) =>
         {
             _musicToastTimer.Stop();
@@ -933,7 +963,10 @@ public partial class MainWindow : Window
         {
             ContentGrid.Visibility = Visibility.Collapsed;
             _music.FadeOut();
-            Browser.Show();
+
+            // ResumeApp, not Show: Show opens the BROWSER, which would leave the app's
+            // page running invisibly behind an empty browsing view.
+            Browser.ResumeApp();
             return;
         }
 
@@ -1001,6 +1034,44 @@ public partial class MainWindow : Window
     /// now-playing toasts. Attaching to the browser rather than running a second web view
     /// is what keeps it to one YouTube instead of two.
     /// </summary>
+    /// <summary>
+    /// The character a key produces, or null for keys that type nothing.
+    ///
+    /// Deliberately small: letters, digits and the punctuation a web address needs. A full
+    /// keyboard-layout mapping would be a lot of code for a field whose whole point is
+    /// that most users are on a controller.
+    /// </summary>
+    private static string? KeyToText(Key key)
+    {
+        var shift = (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift;
+
+        if (key is >= Key.A and <= Key.Z)
+        {
+            var letter = (char)('a' + (key - Key.A));
+            return shift ? char.ToUpperInvariant(letter).ToString() : letter.ToString();
+        }
+
+        if (key is >= Key.D0 and <= Key.D9 && !shift)
+        {
+            return ((char)('0' + (key - Key.D0))).ToString();
+        }
+
+        if (key is >= Key.NumPad0 and <= Key.NumPad9)
+        {
+            return ((char)('0' + (key - Key.NumPad0))).ToString();
+        }
+
+        return key switch
+        {
+            Key.OemPeriod or Key.Decimal => ".",
+            Key.OemMinus or Key.Subtract => shift ? "_" : "-",
+            Key.OemQuestion or Key.Divide => "/",
+            Key.OemSemicolon => shift ? ":" : ";",
+            Key.D2 when shift => "@",
+            _ => null,
+        };
+    }
+
     /// <summary>
     /// Runs a transport command and reports what the page actually did.
     ///
@@ -2019,6 +2090,27 @@ public partial class MainWindow : Window
         // keys fall through to the web view so typing still works.
         if (Browser.IsForeground)
         {
+            // A real keyboard types straight into the on-screen one. Handled here rather
+            // than by focusing a TextBox because the console's window keeps focus for
+            // controller input, so key events arrive at the window either way.
+            if (Browser.IsTyping)
+            {
+                switch (e.Key)
+                {
+                    case Key.Enter: Browser.AcceptTyping(); break;
+                    case Key.Escape: Browser.CancelTyping(); break;
+                    case Key.Back: Browser.TypingBackspace(); break;
+                    case Key.Space: Browser.TypeCharacter(" "); break;
+                    default:
+                        var typed = KeyToText(e.Key);
+                        if (typed is not null) Browser.TypeCharacter(typed);
+                        break;
+                }
+
+                e.Handled = true;
+                return;
+            }
+
             // The exit confirmation owns the keyboard while it is up, so Escape means
             // "no, stay" rather than walking history behind the dialog.
             if (Browser.IsConfirmingExit)

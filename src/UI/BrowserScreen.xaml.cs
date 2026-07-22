@@ -75,6 +75,21 @@ public partial class BrowserScreen : UserControl
     private bool _runtimeMissing;
 
     /// <summary>
+    /// Which of the two web views is currently on screen.
+    ///
+    /// The app view holds YouTube; the browsing view holds everything else. Keeping them
+    /// apart is what lets music carry on in the app while the user opens the browser —
+    /// with one shared view, browsing navigated away from whatever was playing.
+    /// </summary>
+    private bool _appViewActive;
+
+    /// <summary>
+    /// The view the user is looking at. Everything that reads or drives "the page" goes
+    /// through here rather than naming a field, so the same logic serves both.
+    /// </summary>
+    private Microsoft.Web.WebView2.Wpf.WebView2 ActiveWeb => _appViewActive ? AppWeb : Web;
+
+    /// <summary>
     /// A TV user agent, used ONLY for youtube.com.
     ///
     /// YouTube serves its D-pad-friendly "leanback" interface at /tv, but redirects
@@ -95,6 +110,17 @@ public partial class BrowserScreen : UserControl
 
     /// <summary>The normal desktop agent, restored for every non-YouTube site.</summary>
     private string? _defaultUserAgent;
+
+    /// <summary>
+    /// A plain desktop agent, used when the real one was never captured.
+    ///
+    /// The app view is created already pretending to be a television, so on the paths
+    /// where it initialises first there is no genuine desktop agent to read back. Without
+    /// this fallback the TV agent leaks to ordinary sites and they render as TV layouts.
+    /// </summary>
+    private const string DesktopUserAgent =
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+        "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 Edg/126.0.0.0";
 
     /// <summary>
     /// True once the user has chosen YouTube, until they leave for somewhere else.
@@ -142,6 +168,18 @@ public partial class BrowserScreen : UserControl
         HomeTiles.ItemsSource = _homeTiles;
         UpdateHomeHighlight();
 
+        Keyboard.Accepted += (_, text) =>
+        {
+            SetPageVisible(true);
+
+            if (!string.IsNullOrWhiteSpace(text))
+            {
+                Navigate(text);
+            }
+        };
+
+        Keyboard.Cancelled += (_, _) => SetPageVisible(true);
+
         _appReadyFallback.Tick += (_, _) =>
         {
             _appReadyFallback.Stop();
@@ -161,7 +199,7 @@ public partial class BrowserScreen : UserControl
     {
         HomeScreen.Visibility = Visibility.Visible;
         Placeholder.Visibility = Visibility.Collapsed;
-        Web.Visibility = Visibility.Collapsed;
+        ActiveWeb.Visibility = Visibility.Collapsed;
         AddressText.Text = "Start browsing";
 
         // Back into the framed layout — leaving YouTube's full-screen mode on would
@@ -169,6 +207,10 @@ public partial class BrowserScreen : UserControl
         SetFullScreenContent(false);
         _inYouTubeSession = false;
         UsesKeyNavigation = false;
+
+        // Start on the tiles, not the address bar — going somewhere is the common case,
+        // and typing is the deliberate one.
+        MoveHomeVertical(1);
 
         HideCursor();
         UpdateHomeHighlight();
@@ -213,33 +255,67 @@ public partial class BrowserScreen : UserControl
         }
     }
 
+    /// <summary>
+    /// Returns to the APP (YouTube) exactly as it was left, still playing.
+    ///
+    /// Separate from <see cref="Show"/> because the two mean different things now: this
+    /// resumes the app view, while Show opens the browser. Sharing one entry point meant
+    /// pressing the rail's Browser button took the user back to YouTube.
+    /// </summary>
+    public void ResumeApp()
+    {
+        _appViewActive = true;
+        IsAppMode = true;
+
+        _playingOffScreen = false;
+        RenderTransform = new System.Windows.Media.TranslateTransform(0, 0);
+        IsHitTestVisible = true;
+        Visibility = Visibility.Visible;
+        Opacity = 1;
+
+        // An app gets the whole screen, with none of the browser's chrome.
+        SetFullScreenContent(true);
+        Placeholder.Visibility = Visibility.Collapsed;
+        HomeScreen.Visibility = Visibility.Collapsed;
+
+        // Bring the app's page back into the frame and put the browsing one away. The
+        // browsing view MAY be collapsed — nothing of value is playing in it — but the
+        // app view is only ever moved, never collapsed.
+        UnparkAppView();
+        Web.Visibility = Visibility.Collapsed;
+        _pageHiddenForOverlay = false;
+
+        // The app is YouTube's TV interface, which is driven by arrow keys. Browsing in
+        // between will have turned this off for the cursor, so put it back or the D-pad
+        // does nothing on return.
+        _inYouTubeSession = true;
+        UsesKeyNavigation = true;
+        HideCursor();
+
+        Opened?.Invoke(this, EventArgs.Empty);
+    }
+
     public void Show()
     {
-        // Coming back to something left playing off-screen: slide the SAME live page back
-        // rather than resetting, so the user returns to what was on.
-        if (_playingOffScreen)
-        {
-            _playingOffScreen = false;
-            RenderTransform = new System.Windows.Media.TranslateTransform(0, 0);
-            IsHitTestVisible = true;
-            Visibility = Visibility.Visible;
-            Opacity = 1;
-
-            // The page must be showing as well as the screen. An app launch hides the web
-            // view until its splash lifts, and if it was backgrounded before that ran it
-            // is still collapsed — which looks exactly like an empty browser with audio
-            // coming from nowhere.
-            Web.Visibility = Visibility.Visible;
-            _pageHiddenForOverlay = false;
-
-            Opened?.Invoke(this, EventArgs.Empty);
-            return;
-        }
-
         // Opened as a browser, not an app: make sure the chrome an app launch strips off
         // is back, or the toolbar stays missing for the rest of the session.
         IsAppMode = false;
         SetFullScreenContent(false);
+
+        // The BROWSING view. The app view keeps running behind it — that is the whole
+        // point of the split: music carries on while the user browses.
+        //
+        // MOVED OFF-SCREEN, NOT COLLAPSED. Collapsing makes the page report itself
+        // `hidden`, which is exactly when Chromium suspends media — so collapsing the app
+        // view here silenced the music the moment the browser opened. It stays visible and
+        // is simply pushed out of the frame.
+        _appViewActive = false;
+        ParkAppView();
+
+        // Never treat opening the browser as returning to a backgrounded app.
+        _playingOffScreen = false;
+        RenderTransform = new System.Windows.Media.TranslateTransform(0, 0);
+        IsHitTestVisible = true;
 
         Visibility = Visibility.Visible;
         BeginAnimation(OpacityProperty, null);
@@ -263,11 +339,13 @@ public partial class BrowserScreen : UserControl
     public event EventHandler? ClosingAsApp;
 
     /// <summary>
-    /// The web view, so the console's playback controls can watch and drive whatever it
-    /// is playing. Exposed rather than duplicated: there is one YouTube on this console,
-    /// and a second web view would mean two.
+    /// The APP view, so the console's playback controls watch YouTube specifically.
+    ///
+    /// Deliberately not the active view: the mini-player, guide transport and toasts are
+    /// music controls, and pointing them at the browsing view would report a web page's
+    /// audio as "now playing" and let the transport buttons drive it.
     /// </summary>
-    public Microsoft.Web.WebView2.Wpf.WebView2 MediaView => Web;
+    public Microsoft.Web.WebView2.Wpf.WebView2 MediaView => AppWeb;
 
     /// <summary>Raised once the web view is ready to be watched.</summary>
     public event EventHandler? MediaViewReady;
@@ -300,6 +378,11 @@ public partial class BrowserScreen : UserControl
     public async void BeginAppLoad(string url)
     {
         IsAppMode = true;
+
+        // The APP view from here on — separate from the browsing view, so opening the
+        // browser later does not navigate away from what this is playing.
+        _appViewActive = true;
+
         _appReadyAnnounced = false;
         _appReadyFallback.Stop();
         _appReadyFallback.Start();
@@ -325,10 +408,18 @@ public partial class BrowserScreen : UserControl
         Placeholder.Visibility = Visibility.Collapsed;
         HomeScreen.Visibility = Visibility.Collapsed;
 
+        // Back in the frame — a previous browsing session will have pushed it out, and a
+        // page loaded off-screen would never appear.
+        UnparkAppView();
+
         // The web view stays HIDDEN until the splash is ready to lift. WebView2's child
         // window paints over everything WPF draws, so the moment it becomes visible it
         // punches straight through the splash covering it — the page appears mid-load,
         // half-rendered, and the launch animation is ruined. RevealApp() shows it.
+        //
+        // Safe to collapse here, unlike everywhere else: this is a fresh launch, so there
+        // is nothing playing yet for a `hidden` page to have suspended.
+        ActiveWeb.Visibility = Visibility.Collapsed;
         Web.Visibility = Visibility.Collapsed;
 
         Opened?.Invoke(this, EventArgs.Empty);
@@ -352,7 +443,7 @@ public partial class BrowserScreen : UserControl
     /// </summary>
     private void NavigateHidden(string url)
     {
-        if (Web.CoreWebView2 is null || string.IsNullOrWhiteSpace(url))
+        if (ActiveWeb.CoreWebView2 is null || string.IsNullOrWhiteSpace(url))
         {
             return;
         }
@@ -365,7 +456,7 @@ public partial class BrowserScreen : UserControl
         Placeholder.Visibility = Visibility.Collapsed;
 
         // Deliberately NOT showing Web here — that is RevealApp's job.
-        Web.CoreWebView2.Navigate(target);
+        ActiveWeb.CoreWebView2.Navigate(target);
     }
 
     /// <summary>
@@ -379,7 +470,7 @@ public partial class BrowserScreen : UserControl
             return;
         }
 
-        Web.Visibility = Visibility.Visible;
+        ActiveWeb.Visibility = Visibility.Visible;
 
         // Straight to full opacity, no fade: this is called while the splash still covers
         // the screen, so a fade here would just be a slower way of arriving at the same
@@ -398,8 +489,8 @@ public partial class BrowserScreen : UserControl
     /// reports `hidden`, which is exactly when browsers suspend media. Measured, not
     /// assumed.
     ///
-    /// Coming back is Show(), which slides the same live page back on screen — so the
-    /// user returns to the thing that was playing, not a fresh page.
+    /// Coming back is ResumeApp(), which slides the same live page back on screen — so
+    /// the user returns to the thing that was playing, not a fresh page.
     /// </summary>
     public void LeavePlaying()
     {
@@ -410,6 +501,12 @@ public partial class BrowserScreen : UserControl
 
         ExitPrompt.Visibility = Visibility.Collapsed;
         HideCursor();
+
+        // Whatever is playing lives in the APP view, so that is what stays alive. The
+        // browsing view is collapsed outright — it has nothing running worth keeping.
+        _appViewActive = true;
+        Web.Visibility = Visibility.Collapsed;
+        UnparkAppView();
 
         _playingOffScreen = true;
 
@@ -454,11 +551,13 @@ public partial class BrowserScreen : UserControl
         ExitPrompt.Visibility = Visibility.Collapsed;
         _pageHiddenForOverlay = false;
 
-        // Stop whatever the page is doing. Leaving a video playing behind the dashboard
-        // would keep decoding and making noise after the user has left.
-        if (_initialised && Web.CoreWebView2 is not null)
+        // Stop whatever the BROWSING page is doing — leaving a video decoding behind the
+        // dashboard would make noise after the user has left. The app view is deliberately
+        // untouched: closing the browser must not stop the music, which is the entire
+        // reason the two views exist.
+        if (_initialised && ActiveWeb.CoreWebView2 is not null)
         {
-            Web.CoreWebView2.Navigate("about:blank");
+            ActiveWeb.CoreWebView2.Navigate("about:blank");
         }
 
         HideCursor();
@@ -478,6 +577,22 @@ public partial class BrowserScreen : UserControl
             return;
         }
 
+        // If the APP still has something playing, the screen cannot simply collapse —
+        // collapsing makes the page report itself hidden and Chromium suspends its audio,
+        // so closing the browser would silence the music. Park off-screen instead, which
+        // keeps it sounding, and let the host know music is still going.
+        if (AppHasLivePage)
+        {
+            var leave = new DoubleAnimation(Opacity, 0, TimeSpan.FromSeconds(0.25));
+            leave.Completed += (_, _) =>
+            {
+                Opacity = 1;
+                LeavePlaying();
+            };
+            BeginAnimation(OpacityProperty, leave);
+            return;
+        }
+
         var fade = new DoubleAnimation(Opacity, 0, TimeSpan.FromSeconds(0.25));
         fade.Completed += (_, _) =>
         {
@@ -485,6 +600,44 @@ public partial class BrowserScreen : UserControl
             CloseRequested?.Invoke(this, EventArgs.Empty);
         };
         BeginAnimation(OpacityProperty, fade);
+    }
+
+    /// <summary>
+    /// Pushes the app view out of the frame while keeping it VISIBLE.
+    ///
+    /// The distinction is the whole mechanism. Off-screen, the page still reports
+    /// `visibilityState: "visible"` and Chromium keeps its audio running; collapsed, it
+    /// reports `hidden` and media is suspended. Measured, not assumed — and getting this
+    /// wrong is what stopped the music when the browser opened.
+    /// </summary>
+    private void ParkAppView()
+    {
+        AppWeb.Visibility = Visibility.Visible;
+        AppWeb.IsHitTestVisible = false;
+        AppWeb.RenderTransform = new System.Windows.Media.TranslateTransform(-10000, 0);
+    }
+
+    /// <summary>Brings the app view back into the frame.</summary>
+    private void UnparkAppView()
+    {
+        AppWeb.Visibility = Visibility.Visible;
+        AppWeb.IsHitTestVisible = true;
+        AppWeb.RenderTransform = new System.Windows.Media.TranslateTransform(0, 0);
+    }
+
+    /// <summary>
+    /// True when the app view holds a real page rather than a blank one.
+    ///
+    /// Used to decide whether closing the browser may collapse the whole screen: with an
+    /// app still loaded it must not, because collapsing suspends its audio.
+    /// </summary>
+    private bool AppHasLivePage
+    {
+        get
+        {
+            var source = AppWeb.CoreWebView2?.Source;
+            return !string.IsNullOrEmpty(source) && source != "about:blank";
+        }
     }
 
     /// <summary>
@@ -507,7 +660,7 @@ public partial class BrowserScreen : UserControl
         {
             // Already running. If it was started in the background by Settings, it has
             // never been shown a start screen — give it one now.
-            if (Visibility == Visibility.Visible && !IsOnHome && Web.Visibility != Visibility.Visible)
+            if (Visibility == Visibility.Visible && !IsOnHome && ActiveWeb.Visibility != Visibility.Visible)
             {
                 ShowHome();
             }
@@ -536,18 +689,28 @@ public partial class BrowserScreen : UserControl
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "GamingOS", "Browser");
 
+            // ONE environment shared by BOTH views. A user data folder allows only one
+            // WebView2 session at a time, so two separately created environments pointing
+            // at the same folder would fail outright. Sharing it also means the two views
+            // share a single browser process — the second costs a renderer rather than a
+            // whole stack — and share cookies, so one YouTube sign-in covers both.
             var env = await CoreWebView2Environment.CreateAsync(userDataFolder: userData);
+
             await Web.EnsureCoreWebView2Async(env);
+            await AppWeb.EnsureCoreWebView2Async(env);
 
             // WebView2 paints WHITE before a page has rendered — a hard flash on a dark
             // console, and the reason an app launch showed a bright frame between the
             // splash and the page. DefaultBackgroundColor is the supported fix: the
             // control renders this instead of white from initialisation onward, with no
             // visibility toggling or timing tricks.
-            Web.DefaultBackgroundColor = System.Drawing.Color.FromArgb(0xFF, 0x08, 0x0A, 0x0F);
+            var backdrop = System.Drawing.Color.FromArgb(0xFF, 0x08, 0x0A, 0x0F);
+            Web.DefaultBackgroundColor = backdrop;
+            AppWeb.DefaultBackgroundColor = backdrop;
 
             _initialised = true;
-            WireEvents();
+            WireEvents(Web, isAppView: false);
+            WireEvents(AppWeb, isAppView: true);
 
             // The console's playback controls can start watching now that there is a
             // page to watch.
@@ -578,22 +741,40 @@ public partial class BrowserScreen : UserControl
 
     private void ShowUnavailable()
     {
-        Web.Visibility = Visibility.Collapsed;
+        ActiveWeb.Visibility = Visibility.Collapsed;
         Placeholder.Visibility = Visibility.Visible;
         PlaceholderTitle.Text = "Browser unavailable";
         PlaceholderBody.Text =
             "The web browser component isn't installed on this console. Everything else works normally.";
     }
 
-    private void WireEvents()
+    /// <summary>
+    /// Wires both views. Called once per view, with <paramref name="isAppView"/> saying
+    /// which one — chrome updates (the address bar, the loading text) belong only to the
+    /// view actually on screen, or a background page's navigation would rewrite the
+    /// toolbar of the one the user is looking at.
+    /// </summary>
+    private void WireEvents(Microsoft.Web.WebView2.Wpf.WebView2 view, bool isAppView)
     {
-        var core = Web.CoreWebView2;
+        var core = view.CoreWebView2;
+
+        // True while THIS view is the one the user is looking at.
+        bool IsShowing() => _appViewActive == isAppView;
 
         core.NavigationStarting += (_, e) =>
         {
-            // Only ever ENDS a session, never starts one. A page cannot put the console
-            // into TV mode by navigating; that follows from what the user picked.
-            TrackNavigation(e.Uri);
+            // Session tracking belongs to the view actually on screen. The app view
+            // navigating in the background must not switch the browsing view out of TV
+            // mode, or vice versa — they are independent pages.
+            if (IsShowing())
+            {
+                // Only ever ENDS a session, never starts one. A page cannot put the
+                // console into TV mode by navigating; that follows from what the user
+                // picked.
+                TrackNavigation(e.Uri);
+            }
+
+            if (!IsShowing()) return;
 
             StatusText.Text = "Loading…";
             AddressText.Text = e.Uri;
@@ -601,13 +782,14 @@ public partial class BrowserScreen : UserControl
 
         core.NavigationCompleted += (_, _) =>
         {
+            if (!IsShowing()) return;
+
             StatusText.Text = string.Empty;
             UpdateNavButtons();
 
             // The page now covers the screen, so the hint underneath it is just a stale
             // artefact. Removed rather than left to a timer that could outlive the load.
             HideExitHint();
-
         };
 
         // Readiness for an app launch is signalled from ContentLoading, not
@@ -617,7 +799,9 @@ public partial class BrowserScreen : UserControl
         // document starts rendering, which is the moment worth uncovering.
         core.ContentLoading += (_, _) =>
         {
-            if (!IsAppMode || _appReadyAnnounced)
+            // The launch splash waits on the APP view only — the browsing view loading a
+            // page has nothing to do with an app launch.
+            if (!isAppView || !IsAppMode || _appReadyAnnounced)
             {
                 return;
             }
@@ -645,6 +829,8 @@ public partial class BrowserScreen : UserControl
 
         core.SourceChanged += (_, _) =>
         {
+            if (!IsShowing()) return;
+
             AddressText.Text = string.IsNullOrEmpty(core.Source) || core.Source == "about:blank"
                 ? "Start browsing"
                 : core.Source;
@@ -757,14 +943,14 @@ public partial class BrowserScreen : UserControl
         // — a confident-sounding answer that happens to be false.
         await EnsureBrowserAsync();
 
-        if (!_initialised || Web.CoreWebView2 is null)
+        if (!_initialised || ActiveWeb.CoreWebView2 is null)
         {
             return Array.Empty<string>();
         }
 
         try
         {
-            var settings = await Web.CoreWebView2.Profile.GetNonDefaultPermissionSettingsAsync();
+            var settings = await ActiveWeb.CoreWebView2.Profile.GetNonDefaultPermissionSettingsAsync();
 
             return settings
                 .Where(s => s.PermissionState == CoreWebView2PermissionState.Allow)
@@ -789,14 +975,14 @@ public partial class BrowserScreen : UserControl
 
     private async Task ResetStoredPermissionsAsync(bool deniedOnly)
     {
-        if (!_initialised || Web.CoreWebView2 is null)
+        if (!_initialised || ActiveWeb.CoreWebView2 is null)
         {
             return;
         }
 
         try
         {
-            var profile = Web.CoreWebView2.Profile;
+            var profile = ActiveWeb.CoreWebView2.Profile;
             var permissions = await profile.GetNonDefaultPermissionSettingsAsync();
 
             foreach (var setting in permissions)
@@ -830,7 +1016,7 @@ public partial class BrowserScreen : UserControl
 
     private void UpdateNavButtons()
     {
-        var core = Web.CoreWebView2;
+        var core = ActiveWeb.CoreWebView2;
         if (core is null)
         {
             return;
@@ -849,15 +1035,15 @@ public partial class BrowserScreen : UserControl
     /// </summary>
     public void GoBack()
     {
-        if (_initialised && Web.CoreWebView2?.CanGoBack == true)
+        if (_initialised && ActiveWeb.CoreWebView2?.CanGoBack == true)
         {
-            Web.CoreWebView2.GoBack();
+            ActiveWeb.CoreWebView2.GoBack();
             return;
         }
 
         if (!IsOnHome && _initialised)
         {
-            Web.CoreWebView2?.Navigate("about:blank");
+            ActiveWeb.CoreWebView2?.Navigate("about:blank");
             ShowHome();
             return;
         }
@@ -867,18 +1053,18 @@ public partial class BrowserScreen : UserControl
 
     public void GoForward()
     {
-        if (_initialised && Web.CoreWebView2?.CanGoForward == true)
+        if (_initialised && ActiveWeb.CoreWebView2?.CanGoForward == true)
         {
-            Web.CoreWebView2.GoForward();
+            ActiveWeb.CoreWebView2.GoForward();
         }
     }
 
-    public void Reload() => Web.CoreWebView2?.Reload();
+    public void Reload() => ActiveWeb.CoreWebView2?.Reload();
 
     /// <summary>Navigates to a URL, tolerating input without a scheme.</summary>
     public void Navigate(string url)
     {
-        if (!_initialised || Web.CoreWebView2 is null || string.IsNullOrWhiteSpace(url))
+        if (!_initialised || ActiveWeb.CoreWebView2 is null || string.IsNullOrWhiteSpace(url))
         {
             return;
         }
@@ -890,9 +1076,9 @@ public partial class BrowserScreen : UserControl
         // Leaving the start screen for real content.
         HomeScreen.Visibility = Visibility.Collapsed;
         Placeholder.Visibility = Visibility.Collapsed;
-        Web.Visibility = Visibility.Visible;
+        ActiveWeb.Visibility = Visibility.Visible;
 
-        Web.CoreWebView2.Navigate(target);
+        ActiveWeb.CoreWebView2.Navigate(target);
     }
 
     /// <summary>
@@ -943,17 +1129,31 @@ public partial class BrowserScreen : UserControl
     /// <summary>Puts the browser into key-navigation or cursor mode to match the session.</summary>
     private void ApplySessionMode()
     {
-        var core = Web.CoreWebView2;
+        var core = ActiveWeb.CoreWebView2;
         if (core is null)
         {
             return;
         }
 
-        _defaultUserAgent ??= core.Settings.UserAgent;
+        // Capture the real desktop agent ONCE, and only from a view that has not already
+        // been switched to the TV one. Reading it back off a view that is currently
+        // pretending to be a PS4 records the TV agent as the "default", after which every
+        // ordinary site is served a television layout — which is exactly what made Google
+        // look like an old TV interface.
+        if (_defaultUserAgent is null && !_inYouTubeSession)
+        {
+            _defaultUserAgent = core.Settings.UserAgent;
+        }
 
-        var isYouTube = _inYouTubeSession;
+        // The TV agent belongs to the APP view alone. The session's host list is wide on
+        // purpose — sign-in and consent redirect through several Google domains and must
+        // not drop out of TV mode mid-flow — but in the BROWSING view that same breadth
+        // meant visiting Google got a television layout.
+        var isYouTube = _inYouTubeSession && _appViewActive;
 
-        core.Settings.UserAgent = isYouTube ? TvUserAgent : _defaultUserAgent;
+        core.Settings.UserAgent = isYouTube
+            ? TvUserAgent
+            : _defaultUserAgent ?? DesktopUserAgent;
 
         // Leanback drives by arrow keys; everything else needs the pointer.
         UsesKeyNavigation = isYouTube;
@@ -963,9 +1163,9 @@ public partial class BrowserScreen : UserControl
             HideCursor();
         }
 
-        // Leanback is a TV interface in its own right — it gets the whole screen. The
-        // console's chrome and margins would otherwise take a substantial bite out of
-        // a 1080p display and leave the video noticeably smaller than it should be.
+        // Full screen is for the YOUTUBE APP only — the TV interface is a television UI in
+        // its own right, and the console's chrome around it would waste the screen.
+        // Everything in the browsing view keeps its toolbar and frame.
         SetFullScreenContent(isYouTube);
 
         ButtonHints.Text = UsesKeyNavigation
@@ -1065,7 +1265,7 @@ public partial class BrowserScreen : UserControl
     /// </summary>
     public async void SendKey(NativeKeyboard.VirtualKey key)
     {
-        if (!_initialised || Web.CoreWebView2 is null)
+        if (!_initialised || ActiveWeb.CoreWebView2 is null)
         {
             return;
         }
@@ -1083,8 +1283,8 @@ public partial class BrowserScreen : UserControl
 
         try
         {
-            await Web.CoreWebView2.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent", down);
-            await Web.CoreWebView2.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent", up);
+            await ActiveWeb.CoreWebView2.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent", down);
+            await ActiveWeb.CoreWebView2.CallDevToolsProtocolMethodAsync("Input.dispatchKeyEvent", up);
         }
         catch (Exception e) when (e is COMException or InvalidOperationException or JsonException)
         {
@@ -1140,7 +1340,7 @@ public partial class BrowserScreen : UserControl
     /// <summary>A friendly name for the current site, for the confirmation text.</summary>
     private string? CurrentSiteName()
     {
-        var source = Web.CoreWebView2?.Source;
+        var source = ActiveWeb.CoreWebView2?.Source;
         if (string.IsNullOrEmpty(source) || source == "about:blank")
         {
             return null;
@@ -1243,10 +1443,10 @@ public partial class BrowserScreen : UserControl
         // HWND which paints over WPF content regardless of ZIndex or declaration order
         // ("airspace"), so a dialog drawn on top of it is simply invisible. Collapsing the
         // view is the only reliable way to be seen. The page keeps running underneath.
-        _webHiddenForPrompt = Web.Visibility == Visibility.Visible;
+        _webHiddenForPrompt = ActiveWeb.Visibility == Visibility.Visible;
         if (_webHiddenForPrompt)
         {
-            Web.Visibility = Visibility.Collapsed;
+            ActiveWeb.Visibility = Visibility.Collapsed;
         }
 
         PermissionPrompt.Visibility = Visibility.Visible;
@@ -1269,10 +1469,10 @@ public partial class BrowserScreen : UserControl
     {
         if (!visible)
         {
-            _pageHiddenForOverlay = Web.Visibility == Visibility.Visible;
+            _pageHiddenForOverlay = ActiveWeb.Visibility == Visibility.Visible;
             if (_pageHiddenForOverlay)
             {
-                Web.Visibility = Visibility.Collapsed;
+                ActiveWeb.Visibility = Visibility.Collapsed;
             }
 
             return;
@@ -1280,7 +1480,7 @@ public partial class BrowserScreen : UserControl
 
         if (_pageHiddenForOverlay)
         {
-            Web.Visibility = Visibility.Visible;
+            ActiveWeb.Visibility = Visibility.Visible;
             _pageHiddenForOverlay = false;
         }
     }
@@ -1314,7 +1514,7 @@ public partial class BrowserScreen : UserControl
 
         if (_webHiddenForPrompt)
         {
-            Web.Visibility = Visibility.Visible;
+            ActiveWeb.Visibility = Visibility.Visible;
             _webHiddenForPrompt = false;
         }
 
@@ -1345,6 +1545,86 @@ public partial class BrowserScreen : UserControl
 
     private void PermissionDeny_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
         => AnswerPermission(false);
+
+    // ---------------- address entry ----------------
+
+    /// <summary>True while the on-screen keyboard owns controller input.</summary>
+    public bool IsTyping => Keyboard.IsOpen;
+
+    /// <summary>
+    /// True while the address bar has the controller highlight.
+    ///
+    /// Reached by pressing UP from the start screen's tiles — without it the address bar
+    /// is mouse-only, which on a console means unreachable.
+    /// </summary>
+    public bool IsAddressFocused { get; private set; }
+
+    /// <summary>Moves focus between the start-screen tiles and the address bar above them.</summary>
+    public void MoveHomeVertical(int delta)
+    {
+        if (!IsOnHome)
+        {
+            return;
+        }
+
+        IsAddressFocused = delta < 0;
+
+        var accent = TryFindResource("Theme.AccentPrimaryBrush") as System.Windows.Media.Brush;
+
+        AddressBar.BorderBrush = IsAddressFocused
+            ? accent ?? AddressBar.BorderBrush
+            : new System.Windows.Media.SolidColorBrush(
+                System.Windows.Media.Color.FromRgb(0x2A, 0x2F, 0x3A));
+
+        // Clear the tile highlight while the address bar has focus, so only one thing
+        // looks selected.
+        for (var i = 0; i < _homeTiles.Count; i++)
+        {
+            _homeTiles[i].IsFocused = !IsAddressFocused && i == _homeIndex;
+        }
+    }
+
+    /// <summary>
+    /// Opens the on-screen keyboard to type a web address.
+    ///
+    /// The page is hidden first: WebView2 paints over WPF content, so a keyboard drawn on
+    /// top of a live page would simply be invisible.
+    /// </summary>
+    public void OpenAddressEntry()
+    {
+        var current = ActiveWeb.CoreWebView2?.Source;
+        var seed = string.IsNullOrEmpty(current) || current == "about:blank"
+            ? string.Empty
+            : current;
+
+        SetPageVisible(false);
+        Keyboard.Show("Enter address", seed);
+    }
+
+    /// <summary>
+    /// Types a character from a REAL keyboard while the on-screen one is up.
+    ///
+    /// The on-screen keyboard exists because the console has no keyboard — but when one
+    /// is present there is no reason to make someone hunt keys with a D-pad, so physical
+    /// typing goes straight into the same field.
+    /// </summary>
+    public void TypeCharacter(string text) => Keyboard.Type(text);
+
+    /// <summary>Moves the keyboard highlight. Routed from the controller.</summary>
+    public void MoveTypingSelection(int dx, int dy)
+    {
+        if (dx != 0) Keyboard.MoveHorizontal(dx);
+        if (dy != 0) Keyboard.MoveVertical(dy);
+    }
+
+    public void PressTypingKey() => Keyboard.Activate();
+    public void TypingBackspace() => Keyboard.Backspace();
+    public void TypingShift() => Keyboard.ToggleShift();
+    public void CancelTyping() => Keyboard.Cancel();
+    public void AcceptTyping() => Keyboard.Accept();
+
+    private void AddressBar_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        => OpenAddressEntry();
 
     private void Back_Click(object sender, System.Windows.Input.MouseButtonEventArgs e) => GoBack();
     private void Forward_Click(object sender, System.Windows.Input.MouseButtonEventArgs e) => GoForward();
