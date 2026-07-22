@@ -38,6 +38,13 @@ public sealed class SoftwareUpdateService
     public string InstalledVersion => _checker.InstalledVersion;
     public string? PreviousVersion => _checker.PreviousVersion;
 
+    /// <summary>
+    /// The downloaded package waiting to be installed, or null if none is ready. Set when
+    /// a download completes; read by the installer to know what to unpack.
+    /// </summary>
+    public string? PendingPackagePath => LastResult?.PendingPackagePath
+        ?? _state.Get(ConsoleStateKeys.PendingPackagePath);
+
     /// <summary>True when an update was installed and its notes have not been shown yet.</summary>
     public bool HasUnseenUpdateNotes => _checker.HasUnseenUpdateNotes;
 
