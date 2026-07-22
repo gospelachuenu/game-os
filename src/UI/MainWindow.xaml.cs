@@ -89,6 +89,13 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
 
+        // TEMPORARY: hide the browser rail button while the browser is disabled, so the
+        // rail shows only what actually works. Re-enabled by an update flipping the flag.
+        if (ConsoleApp.BrowserAndYouTubeDisabled)
+        {
+            BrowserRailButton.Visibility = Visibility.Collapsed;
+        }
+
         // Update service and parental controls share the one console state store.
         //
         // When a manifest URL is configured (the VM and the real console), use the REAL
@@ -1360,7 +1367,9 @@ public partial class MainWindow : Window
     private void SetRailFocused(bool focused)
     {
         _isRailFocused = focused;
-        _railFocusIndex = 0;
+
+        // Start past the hidden browser button while it is disabled.
+        _railFocusIndex = ConsoleApp.BrowserAndYouTubeDisabled ? 1 : 0;
 
         // Focus is on the rail now, so neither row should still look selected. Coming
         // back, only the row that actually holds focus lights up again.
@@ -1374,6 +1383,14 @@ public partial class MainWindow : Window
     private void MoveRailSelection(int delta)
     {
         _railFocusIndex = Math.Clamp(_railFocusIndex + delta, 0, RailButtonNames.Length - 1);
+
+        // Skip the hidden browser button (index 0) while it is disabled — landing focus on
+        // an invisible control would look like the highlight vanished.
+        if (ConsoleApp.BrowserAndYouTubeDisabled && _railFocusIndex == 0)
+        {
+            _railFocusIndex = 1;
+        }
+
         UpdateRailHighlight();
     }
 
@@ -1381,7 +1398,11 @@ public partial class MainWindow : Window
     {
         switch (_railFocusIndex)
         {
-            case 0: Browser.Show(); break;
+            // Browser disabled for now — see ConsoleApp.BrowserAndYouTubeDisabled. The
+            // button is hidden and skipped, but guard here too so nothing can reach it.
+            case 0:
+                if (!ConsoleApp.BrowserAndYouTubeDisabled) Browser.Show();
+                break;
             case 1: Updates.Show(); break;
             default: Settings.Show(); break;
         }
@@ -2163,8 +2184,9 @@ public partial class MainWindow : Window
             return;
         }
 
-        // Ctrl+B — open the browser.
+        // Ctrl+B — open the browser. Disabled for now along with the tile and rail button.
         if (e.Key == Key.B && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control
+            && !ConsoleApp.BrowserAndYouTubeDisabled
             && !Browser.IsForeground
             && Boot.Visibility != Visibility.Visible)
         {
@@ -2524,7 +2546,11 @@ public partial class MainWindow : Window
         Guide.Open();
     }
 
-    private void BrowserRailButton_Click(object sender, RoutedEventArgs e) => Browser.Show();
+    private void BrowserRailButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (ConsoleApp.BrowserAndYouTubeDisabled) return;
+        Browser.Show();
+    }
 
     private void UpdatesRailButton_Click(object sender, RoutedEventArgs e)
     {

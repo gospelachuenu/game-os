@@ -61,12 +61,27 @@ public sealed class ConsoleApp : INotifyPropertyChanged
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 
     /// <summary>
+    /// <summary>
+    /// TEMPORARY: the browser and YouTube are disabled for now, on purpose.
+    ///
+    /// This is the "before" state for testing the over-the-air update: the first published
+    /// update flips this to false, and the browser tile/rail button reappearing is the
+    /// visible proof that the update actually applied. Flip this and re-publish to complete
+    /// that test; then this flag can go.
+    /// </summary>
+    public const bool BrowserAndYouTubeDisabled = true;
+
+    /// <summary>
     /// The apps this console ships with.
     ///
     /// YouTube is first and, for now, alone — the drawer exists so that adding the next
-    /// one is a list entry rather than a layout change.
+    /// one is a list entry rather than a layout change. Empty while
+    /// <see cref="BrowserAndYouTubeDisabled"/> is set.
     /// </summary>
-    public static IReadOnlyList<ConsoleApp> BuiltIn { get; } = new[]
+    public static IReadOnlyList<ConsoleApp> BuiltIn =>
+        BrowserAndYouTubeDisabled ? Array.Empty<ConsoleApp>() : AllApps;
+
+    private static readonly IReadOnlyList<ConsoleApp> AllApps = new[]
     {
         new ConsoleApp
         {
