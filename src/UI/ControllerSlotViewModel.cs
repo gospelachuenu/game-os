@@ -24,11 +24,24 @@ public sealed class ControllerSlotViewModel : INotifyPropertyChanged
             {
                 _state = value;
                 OnPropertyChanged();
+                OnPropertyChanged(nameof(StateLabel));
+                OnPropertyChanged(nameof(IsLit));
             }
         }
     }
 
-    public string Label => $"Player {SlotNumber + 1}";
+    public string Label => $"PLAYER {SlotNumber + 1}";
+
+    /// <summary>Short state caption shown under each pad glyph on the setup screen.</summary>
+    public string StateLabel => State switch
+    {
+        ControllerSlotState.Confirmed => "READY",
+        ControllerSlotState.Connected => "PRESS ANY BUTTON",
+        _ => "EMPTY SLOT",
+    };
+
+    /// <summary>True while this slot has a controller lit up (connected or confirmed) — drives the pad glyph's accent styling.</summary>
+    public bool IsLit => State != ControllerSlotState.NotConnected;
 
     public ControllerSlotViewModel(int slotNumber)
     {

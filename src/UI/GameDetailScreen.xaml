@@ -6,59 +6,76 @@
              xmlns:local="clr-namespace:UI"
              mc:Ignorable="d" x:Name="Root" Visibility="Collapsed">
     <!--
-        Game detail screen: shown when a game tile is selected, replacing the old
-        straight-to-launch swallow. Keeps the home screen's ambient video playing
-        behind a frosted/dark scrim (same treatment as UpdatesScreen — MainWindow
-        hides only ContentGrid, not Ambient). Shows a large hero thumbnail, the
-        game's info, a Play button (which fires the swallow launch), an update
-        progress bar when an update is pending, and mock recommended graphics
-        settings. Fully controller-navigable — see GameDetailScreen.xaml.cs.
+        SPOTLIGHT GAME DETAILS.
+        Cover art anchors the left at real box-art proportions (3:4); the right column
+        answers the three questions that matter from the couch — is it ready, how will
+        it run on this box, and where did I leave off. The game's own accent tint
+        washes the background, matching the home screen it was opened from, and the
+        ambient video keeps playing behind it all.
     -->
     <UserControl.Resources>
         <local:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
-        <local:DownloadingToVisibilityConverter x:Key="DownloadingToVisibilityConverter"/>
+        <local:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+        <local:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter"/>
         <local:PercentToStarConverter x:Key="PercentToStarConverter"/>
         <local:PercentToRemainingStarConverter x:Key="PercentToRemainingStarConverter"/>
-        <local:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
 
         <Style x:Key="SpecCardStyle" TargetType="Border">
-            <Setter Property="CornerRadius" Value="14"/>
-            <Setter Property="Background" Value="#0AFFFFFF"/>
-            <Setter Property="BorderBrush" Value="#14FFFFFF"/>
+            <Setter Property="CornerRadius" Value="12"/>
+            <Setter Property="Background" Value="#0DFFFFFF"/>
+            <Setter Property="BorderBrush" Value="#17FFFFFF"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Padding" Value="20,16"/>
+            <Setter Property="Padding" Value="16,13"/>
         </Style>
     </UserControl.Resources>
 
-    <!-- Frosted dark scrim over the ambient video, same alpha as UpdatesScreen. -->
-    <Grid Background="#66060709">
-        <Grid MaxWidth="1180" Margin="60,44,60,44">
+    <Grid>
+        <!-- Frosted scrim over the ambient video, then the game's own colour wash. -->
+        <Border Background="#8C060709"/>
+        <Border Background="{Binding AmbientTintBrush}"/>
+        <Border>
+            <Border.Background>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                    <GradientStop Color="#D9040508" Offset="0"/>
+                    <GradientStop Color="#73040508" Offset="0.5"/>
+                    <GradientStop Color="#33040508" Offset="1"/>
+                </LinearGradientBrush>
+            </Border.Background>
+        </Border>
+
+        <Grid MaxWidth="1180" Margin="60,40,60,32">
             <Grid.RowDefinitions>
                 <RowDefinition Height="*"/>
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
+            <!--
+                ART-LED LAYOUT. The cover fills most of the frame height and the text
+                column is vertically centred against it, rather than everything being
+                pinned to the top over a large void.
+
+                This is deliberate: consoles fill a details page with live/social
+                content (friends playing, news, DLC, achievements) and NONE of those
+                feeds are available here — no store API access, no friends data. Rather
+                than invent filler to occupy the space (which is how the fake
+                "recommended settings" panel happened), the space is given to the one
+                genuinely good asset we do have: the box art.
+            -->
             <Grid Grid.Row="0">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="440"/>
-                    <ColumnDefinition Width="40"/>
-                    <ColumnDefinition/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="56"/>
+                    <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
 
-                <!-- Left: hero thumbnail -->
-                <StackPanel Grid.Column="0" VerticalAlignment="Top">
-                    <Border x:Name="Thumbnail" CornerRadius="20" Height="300" Background="{Binding ArtBrush}">
+                <!-- COVER ART — 3:4 box art, sized to fill the available height -->
+                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                    <Border x:Name="Thumbnail" CornerRadius="18" Height="440" Width="330"
+                            Background="{Binding ArtBrush}">
                         <Border.Effect>
-                            <DropShadowEffect Color="Black" BlurRadius="34" ShadowDepth="0" Opacity="0.5"/>
+                            <DropShadowEffect Color="Black" BlurRadius="34" ShadowDepth="8" Opacity="0.62"/>
                         </Border.Effect>
-                        <!--
-                            When a cover image exists (GameEntry.ImageUrl resolved by
-                            GameIconLoader) it fills the whole thumbnail edge-to-edge;
-                            CornerRadius matches the outer border so the rounded corners
-                            are preserved. With no image, the gradient ArtBrush behind
-                            this (the outer Border's Background) shows through instead.
-                        -->
-                        <Border CornerRadius="20"
+                        <Border CornerRadius="18"
                                 Visibility="{Binding IconSource, Converter={StaticResource NullToVisibilityConverter}}">
                             <Border.Background>
                                 <ImageBrush ImageSource="{Binding IconSource}" Stretch="UniformToFill"/>
@@ -66,94 +83,148 @@
                         </Border>
                     </Border>
 
-                    <!-- Provider + status chips -->
-                    <StackPanel Orientation="Horizontal" Margin="0,18,0,0">
-                        <Border CornerRadius="8" Background="#14FFFFFF" Padding="12,6" Margin="0,0,10,0">
-                            <TextBlock Text="{Binding ProviderLabel}" FontSize="11" FontWeight="Bold" Foreground="#B8B8C2"/>
-                        </Border>
-                        <Border CornerRadius="8" Background="{DynamicResource Theme.AccentPrimaryFaintTintBrush}" Padding="12,6">
-                            <TextBlock Text="{Binding StatusLabel}" FontSize="11" FontWeight="Bold"
-                                       Foreground="{DynamicResource Theme.AccentPrimaryBrush}"/>
-                        </Border>
-                    </StackPanel>
+                    <!-- Update progress under the cover, readable across the room -->
+                    <Border CornerRadius="12" Background="#0FFFFFFF" BorderBrush="#59F5B72E" BorderThickness="1"
+                            Padding="14,11" Margin="0,14,0,0"
+                            Visibility="{Binding HasUpdatePending, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <StackPanel>
+                            <Grid Margin="0,0,0,8">
+                                <TextBlock Text="UPDATING" FontSize="10.5" FontWeight="Bold"
+                                           Foreground="#F5B72E" HorizontalAlignment="Left"/>
+                                <TextBlock Text="{Binding UpdateProgressPercent, StringFormat={}{0:0}%}"
+                                           FontSize="12" FontWeight="Bold" Foreground="#F5B72E" HorizontalAlignment="Right"/>
+                            </Grid>
+                            <Border Height="5" CornerRadius="3" Background="#1FFFFFFF">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="{Binding UpdateProgressPercent, Converter={StaticResource PercentToStarConverter}}"/>
+                                        <ColumnDefinition Width="{Binding UpdateProgressPercent, Converter={StaticResource PercentToRemainingStarConverter}}"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Border Grid.Column="0" CornerRadius="3" Background="#F5B72E"/>
+                                </Grid>
+                            </Border>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
 
-                <!-- Right: info + settings -->
-                <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Hidden">
+                <!-- RIGHT COLUMN — vertically centred against the cover art -->
+                <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Hidden"
+                              VerticalAlignment="Center">
                     <StackPanel>
-                        <TextBlock Text="{Binding ProviderLabel}" FontSize="12" FontWeight="Bold"
-                                   Foreground="{DynamicResource Theme.AccentPrimaryBrush}" Margin="0,0,0,8"/>
-                        <TextBlock Text="{Binding GameName}" FontSize="40" FontWeight="Bold"
-                                   Foreground="White" TextWrapping="Wrap" Margin="0,0,0,20"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,2,0,10">
+                            <TextBlock Text="{Binding ProviderLabel}" FontSize="12" FontWeight="Bold"
+                                       Foreground="{DynamicResource Theme.AccentPrimaryBrush}" VerticalAlignment="Center"/>
+                            <Border CornerRadius="7" Padding="10,4" Margin="14,0,0,0"
+                                    Background="{DynamicResource Theme.AccentPrimaryFaintTintBrush}"
+                                    Visibility="{Binding HasUpdatePending, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+                                <TextBlock Text="{Binding StatusLabel}" FontSize="10.5" FontWeight="Bold"
+                                           Foreground="{DynamicResource Theme.AccentPrimaryBrush}"/>
+                            </Border>
+                            <Border CornerRadius="7" Padding="10,4" Margin="14,0,0,0" Background="#26F5B72E"
+                                    Visibility="{Binding HasUpdatePending, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <TextBlock Text="UPDATE IN PROGRESS" FontSize="10.5" FontWeight="Bold" Foreground="#F5B72E"/>
+                            </Border>
+                        </StackPanel>
 
-                        <!-- Update pending: progress bar -->
-                        <Border CornerRadius="14" Background="#0FFFFFFF" Padding="20,16" Margin="0,0,0,22"
-                                Visibility="{Binding HasUpdatePending, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <TextBlock Text="{Binding GameName}" FontSize="56" FontWeight="Bold"
+                                   Foreground="White" TextWrapping="Wrap" LineHeight="56" Margin="0,0,0,30"/>
+
+                        <!--
+                            The "Tuned for your system" spec grid that used to sit here
+                            has been REMOVED. It claimed per-game recommended settings
+                            (preset/resolution/fps/HDR) but produced the same four
+                            values for every title, derived only from the GPU — so it
+                            looked authoritative while telling the user nothing.
+
+                            Genuinely per-game settings are not achievable: it would
+                            need per-engine knowledge of what each setting costs, and
+                            the console cannot read or write a game's own config
+                            anyway. Modern games auto-detect hardware and pick their
+                            own preset, which the developer is far better placed to do.
+                            What the console DOES control is system-wide — the 1080p60
+                            display enforcer (plan.md §9.3) and GPU tuning (§7).
+
+                            See ambient discussion 2026-07-19; do not reintroduce a
+                            fake per-game settings panel.
+                        -->
+
+                        <!-- YOUR ACTIVITY -->
+                        <TextBlock Text="YOUR ACTIVITY" FontSize="11" FontWeight="Bold"
+                                   Foreground="#6E6E7D" Margin="0,0,0,10"/>
+                        <!--
+                            Each row is a two-COLUMN grid: label in a star column that
+                            absorbs the slack, value in an Auto column pinned right.
+                            These previously had no ColumnDefinitions at all, so both
+                            TextBlocks occupied the same cell and simply overlapped
+                            ("Last" printed on top of "Yesterday") whenever the panel
+                            was narrower than label + value.
+                        -->
+                        <Border CornerRadius="12" Background="#0DFFFFFF" BorderBrush="#17FFFFFF"
+                                BorderThickness="1" Padding="22,6" MaxWidth="560" HorizontalAlignment="Stretch">
                             <StackPanel>
-                                <Grid Margin="0,0,0,10">
-                                    <TextBlock Text="UPDATE IN PROGRESS" FontSize="11" FontWeight="Bold"
-                                               Foreground="#F5B72E" HorizontalAlignment="Left"/>
-                                    <TextBlock Text="{Binding UpdateProgressPercent, StringFormat={}{0:0}%}"
-                                               FontSize="12" FontWeight="Bold" Foreground="#F5B72E" HorizontalAlignment="Right"/>
+                                <Grid Margin="0,11,0,11">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Last played" FontSize="12.5"
+                                               Foreground="#9AA091" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding Activity.LastPlayedLabel}" FontSize="12.5"
+                                               FontWeight="Bold" Foreground="White" Margin="16,0,0,0" VerticalAlignment="Center"/>
                                 </Grid>
-                                <Border Height="8" CornerRadius="5" Background="#14FFFFFF">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="{Binding UpdateProgressPercent, Converter={StaticResource PercentToStarConverter}}"/>
-                                            <ColumnDefinition Width="{Binding UpdateProgressPercent, Converter={StaticResource PercentToRemainingStarConverter}}"/>
-                                        </Grid.ColumnDefinitions>
-                                        <Border Grid.Column="0" CornerRadius="5" Background="#F5B72E"/>
-                                    </Grid>
-                                </Border>
+                                <Border Height="1" Background="#14FFFFFF"/>
+                                <Grid Margin="0,11,0,11">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Play time" FontSize="12.5"
+                                               Foreground="#9AA091" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding Activity.PlayTimeLabel}" FontSize="12.5"
+                                               FontWeight="Bold" Foreground="White" Margin="16,0,0,0" VerticalAlignment="Center"/>
+                                </Grid>
+                                <Border Height="1" Background="#14FFFFFF"/>
+                                <Grid Margin="0,11,0,11">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Install size" FontSize="12.5"
+                                               Foreground="#9AA091" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding Activity.InstallSizeLabel}" FontSize="12.5"
+                                               FontWeight="Bold" Foreground="White" Margin="16,0,0,0" VerticalAlignment="Center"/>
+                                </Grid>
+                                <Border Height="1" Background="#14FFFFFF"/>
+                                <Grid Margin="0,11,0,11">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Achievements" FontSize="12.5"
+                                               Foreground="#9AA091" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding Activity.AchievementsLabel}" FontSize="12.5"
+                                               FontWeight="Bold" Foreground="White" Margin="16,0,0,0" VerticalAlignment="Center"/>
+                                </Grid>
                             </StackPanel>
                         </Border>
-
-                        <!-- Recommended settings, chosen for the detected hardware -->
-                        <TextBlock Text="RECOMMENDED FOR YOUR SYSTEM" FontSize="11" FontWeight="Bold"
-                                   Foreground="#6E6E7D" Margin="0,0,0,4"/>
-                        <TextBlock Text="{Binding RecommendedBasis}" FontSize="12" Foreground="#8A8A96"
-                                   TextWrapping="Wrap" Margin="0,0,0,12"/>
-                        <UniformGrid Columns="2" Margin="0,0,0,8">
-                            <Border Style="{StaticResource SpecCardStyle}" Margin="0,0,6,10">
-                                <StackPanel>
-                                    <TextBlock Text="GRAPHICS PRESET" FontSize="10" FontWeight="Bold" Foreground="#6E6E7D" Margin="0,0,0,6"/>
-                                    <TextBlock Text="{Binding RecommendedPreset}" FontSize="17" FontWeight="Bold" Foreground="White"/>
-                                </StackPanel>
-                            </Border>
-                            <Border Style="{StaticResource SpecCardStyle}" Margin="6,0,0,10">
-                                <StackPanel>
-                                    <TextBlock Text="RESOLUTION" FontSize="10" FontWeight="Bold" Foreground="#6E6E7D" Margin="0,0,0,6"/>
-                                    <TextBlock Text="{Binding RecommendedResolution}" FontSize="17" FontWeight="Bold" Foreground="White"/>
-                                </StackPanel>
-                            </Border>
-                            <Border Style="{StaticResource SpecCardStyle}" Margin="0,0,6,0">
-                                <StackPanel>
-                                    <TextBlock Text="FRAME RATE" FontSize="10" FontWeight="Bold" Foreground="#6E6E7D" Margin="0,0,0,6"/>
-                                    <TextBlock Text="{Binding RecommendedFrameRate}" FontSize="17" FontWeight="Bold" Foreground="White"/>
-                                </StackPanel>
-                            </Border>
-                            <Border Style="{StaticResource SpecCardStyle}" Margin="6,0,0,0">
-                                <StackPanel>
-                                    <TextBlock Text="HDR" FontSize="10" FontWeight="Bold" Foreground="#6E6E7D" Margin="0,0,0,6"/>
-                                    <TextBlock Text="{Binding RecommendedHdr}" FontSize="17" FontWeight="Bold" Foreground="White"/>
-                                </StackPanel>
-                            </Border>
-                        </UniformGrid>
                     </StackPanel>
                 </ScrollViewer>
             </Grid>
 
-            <!-- Bottom action bar: Play -->
-            <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,28,0,0">
-                <Border x:Name="PlayButtonHighlight" CornerRadius="15" BorderThickness="2.5" Padding="1.5" BorderBrush="Transparent">
+            <!-- ACTION BAR -->
+            <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,22,0,0">
+                <Border x:Name="PlayButtonHighlight" CornerRadius="15" BorderThickness="2.5" Padding="1.5"
+                        BorderBrush="Transparent">
                     <Button x:Name="PlayButton" Cursor="Hand" Click="PlayButton_Click">
                         <Button.Template>
                             <ControlTemplate TargetType="Button">
                                 <Border x:Name="Bg" CornerRadius="12" Padding="46,15"
                                         Background="{DynamicResource Theme.AccentPrimaryBrush}">
                                     <StackPanel Orientation="Horizontal">
-                                        <TextBlock Text="▶" FontSize="15" FontWeight="Bold" Foreground="#06070B" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                                        <TextBlock Text="Play" FontSize="16" FontWeight="Bold" Foreground="#06070B" VerticalAlignment="Center"/>
+                                        <TextBlock Text="▶" FontSize="15" FontWeight="Bold" Foreground="#06070B"
+                                                   VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                        <TextBlock Text="Play" FontSize="16" FontWeight="Bold" Foreground="#06070B"
+                                                   VerticalAlignment="Center"/>
                                     </StackPanel>
                                 </Border>
                                 <ControlTemplate.Triggers>
@@ -169,7 +240,7 @@
                     </Button>
                 </Border>
 
-                <TextBlock Text="Press B to go back" FontSize="12" FontWeight="Bold"
+                <TextBlock Text="A Play · B Back" FontSize="12" FontWeight="Bold"
                            Foreground="#6E6E7D" VerticalAlignment="Center" Margin="24,0,0,0"/>
             </StackPanel>
         </Grid>

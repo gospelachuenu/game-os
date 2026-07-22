@@ -93,15 +93,17 @@ public partial class GameDetailScreen : UserControl
             return;
         }
 
-        // Capture the thumbnail's bounds (relative to the window root) BEFORE
-        // collapsing this screen, so the launch swallow can grow out of exactly where
-        // the thumbnail sits on screen.
+        // Capture the PLAY BUTTON's bounds (relative to the window root) BEFORE
+        // collapsing this screen, so the launch swallow grows out of the thing the
+        // user actually pressed. Growing it from the cover art instead made the
+        // animation appear to sweep in from the side rather than from the point of
+        // interaction.
         var root = Window.GetWindow(this);
-        var thumbRect = new Rect(0, 0, ActualWidth, ActualHeight);
-        if (root is not null && Thumbnail.ActualWidth > 0)
+        var originRect = new Rect(0, 0, ActualWidth, ActualHeight);
+        if (root is not null && PlayButton.ActualWidth > 0)
         {
-            var topLeft = Thumbnail.TransformToVisual(root).Transform(new Point(0, 0));
-            thumbRect = new Rect(topLeft.X, topLeft.Y, Thumbnail.ActualWidth, Thumbnail.ActualHeight);
+            originRect = PlayButton.TransformToVisual(root)
+                                   .TransformBounds(new Rect(0, 0, PlayButton.ActualWidth, PlayButton.ActualHeight));
         }
 
         // Collapse without the fade-out/CloseRequested path — MainWindow restores the
@@ -109,6 +111,6 @@ public partial class GameDetailScreen : UserControl
         // CloseRequested here would double-restore it.
         _updateTimer.Stop();
         Visibility = Visibility.Collapsed;
-        PlayRequested?.Invoke(_viewModel, thumbRect);
+        PlayRequested?.Invoke(_viewModel, originRect);
     }
 }

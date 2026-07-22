@@ -1,0 +1,67 @@
+<UserControl x:Class="UI.DriverInstallTakeover"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:local="clr-namespace:UI"
+             mc:Ignorable="d" x:Name="Root" Visibility="Collapsed">
+    <!--
+        DRIVER INSTALL TAKEOVER — plan.md §6.1/§6.2.
+        The one screen the plan specifies almost literally: while an AMD driver
+        installs, user controls are locked, the background is darkened harder than any
+        other Spotlight screen, and a full-screen modal carries the mandatory warning
+        that the display will flicker and black out. The progress track is
+        INDETERMINATE by design — silent AMD driver packages do not report linear
+        execution steps, so a percentage here would be a lie (§6.2, State 2).
+        There is deliberately no back affordance and no rail: this cannot be dismissed.
+    -->
+    <Grid Background="#DB060709">
+        <Border MaxWidth="640" VerticalAlignment="Center" HorizontalAlignment="Center"
+                CornerRadius="20" Background="#0FFFFFFF" BorderBrush="#1FFFFFFF"
+                BorderThickness="1" Padding="52,46">
+            <StackPanel>
+                <!-- Status line -->
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,20">
+                    <Ellipse x:Name="PulseDot" Width="10" Height="10" Fill="#F5B72E"
+                             VerticalAlignment="Center" Margin="0,0,12,0"/>
+                    <TextBlock Text="INSTALLING · DO NOT POWER OFF" FontSize="12" FontWeight="Bold"
+                               Foreground="#F5B72E" VerticalAlignment="Center"/>
+                </StackPanel>
+
+                <TextBlock Text="{Binding Title, ElementName=Root}" FontSize="34" FontWeight="Bold"
+                           Foreground="White" TextWrapping="Wrap" LineHeight="38" Margin="0,0,0,8"/>
+                <TextBlock Text="{Binding Subtitle, ElementName=Root}" FontSize="13.5" FontWeight="SemiBold"
+                           Foreground="#9AA091" Margin="0,0,0,32"/>
+
+                <!--
+                    Indeterminate track: a short bar sweeping left-to-right forever,
+                    rather than a percentage we cannot actually measure.
+                -->
+                <Border Height="8" CornerRadius="5" Background="#1AFFFFFF" ClipToBounds="True" Margin="0,0,0,34">
+                    <Canvas x:Name="TrackCanvas" ClipToBounds="True">
+                        <Border x:Name="SweepBar" Height="8" Width="150" CornerRadius="5" Canvas.Left="-150">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                    <GradientStop Color="#00F5B72E" Offset="0"/>
+                                    <GradientStop Color="#FFF5B72E" Offset="0.5"/>
+                                    <GradientStop Color="#00F5B72E" Offset="1"/>
+                                </LinearGradientBrush>
+                            </Border.Background>
+                        </Border>
+                    </Canvas>
+                </Border>
+
+                <!-- The mandatory warning, verbatim in intent from plan.md §6.2 -->
+                <Border BorderBrush="#F5B72E" BorderThickness="3,0,0,0" Padding="20,2,0,2">
+                    <StackPanel>
+                        <TextBlock Text="The screen will flicker and go black"
+                                   FontSize="15" FontWeight="Bold" Foreground="#F5B72E" Margin="0,0,0,7"
+                                   TextWrapping="Wrap"/>
+                        <TextBlock Text="Audio may cut out briefly while the graphics engine restarts. This is completely normal — do not interrupt this process."
+                                   FontSize="13" Foreground="#B8B8C2" TextWrapping="Wrap" LineHeight="20"/>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>

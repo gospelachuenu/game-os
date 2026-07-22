@@ -5,6 +5,8 @@
     <ProjectReference Include="..\Input\Input.csproj" />
     <ProjectReference Include="..\CecController\CecController.csproj" />
     <ProjectReference Include="..\GameLauncher\GameLauncher.csproj" />
+    <ProjectReference Include="..\MaintenanceHub\MaintenanceHub.csproj" />
+    <ProjectReference Include="..\ParentalControls\ParentalControls.csproj" />
   </ItemGroup>
 
   <PropertyGroup>
@@ -19,6 +21,13 @@
     <None Include="Assets\ambient_loop.mp4">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <!-- Looping dashboard music. ambient_music.wav is the self-crossfaded loop built
+         from the raw ambient.mp3 source (which is NOT copied — it's the input only).
+         WAV rather than MP3 deliberately: MP3 has baked-in encoder delay (~25 ms on
+         this source) which makes a seamless loop impossible. -->
+    <None Include="Assets\ambient_music.wav">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <!-- Any image dropped into Assets\Icons\ is copied to the build output so
          GameIconLoader (which reads from AppContext.BaseDirectory\Assets\Icons) can
          find it. Point a game's ImageUrl at the filename to use it as cover art. -->
@@ -26,5 +35,16 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4078.44" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <!-- Declares per-monitor DPI awareness. Without it a scaled display gives the app
+         (and therefore WebView2, and therefore YouTube) a much smaller viewport than
+         the screen actually has. -->
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
 
 </Project>

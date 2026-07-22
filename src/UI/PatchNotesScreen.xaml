@@ -1,0 +1,182 @@
+<UserControl x:Class="UI.PatchNotesScreen"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:UI"
+             Visibility="Collapsed">
+
+    <!-- Background is transparent: the ambient video keeps playing behind this, same
+         treatment as UpdatesScreen. A frosted scrim over it keeps the text readable. -->
+    <Grid>
+        <Border Background="#C8080A0F"/>
+
+        <!-- ============ SPOTLIGHT: one illustrated change per screen ============ -->
+        <Grid x:Name="SpotlightPage" Visibility="Collapsed" Margin="90,70,90,70">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="1*"/>
+                <ColumnDefinition Width="1.1*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Left: the change, written as a benefit -->
+            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,48,0">
+                <TextBlock x:Name="SpotlightKicker" Text="1.4.0 · WHAT'S NEW"
+                           FontSize="12" FontWeight="Bold" Margin="0,0,0,20"
+                           Foreground="{DynamicResource Theme.AccentPrimaryBrush}"/>
+                <TextBlock x:Name="SpotlightHeadline" FontSize="40" FontWeight="SemiBold"
+                           Foreground="#F2F4F0" TextWrapping="Wrap" LineHeight="46"
+                           Text="Remove games without leaving the console"/>
+                <TextBlock x:Name="SpotlightBody" FontSize="16" Foreground="#B9BCB6"
+                           TextWrapping="Wrap" Margin="0,20,0,0" MaxWidth="440" LineHeight="24"
+                           Text="Every game now has a Remove option on its details page."/>
+
+                <StackPanel x:Name="SpotlightDots" Orientation="Horizontal" Margin="0,40,0,0"/>
+                <TextBlock x:Name="SpotlightCounter" Text="1 OF 3" FontSize="11" Foreground="#5A606A"
+                           Margin="0,14,0,0" FontWeight="Bold"/>
+            </StackPanel>
+
+            <!-- Right: the screenshot -->
+            <Border Grid.Column="1" CornerRadius="12" ClipToBounds="True"
+                    BorderBrush="#2A2F3A" BorderThickness="1" VerticalAlignment="Center"
+                    MaxHeight="440">
+                <Grid>
+                    <!-- Placeholder wash shown when an image is missing or absent, so a
+                         broken path never leaves an empty hole. -->
+                    <Border x:Name="SpotlightImageFallback">
+                        <Border.Background>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                <GradientStop Color="#12161C" Offset="0"/>
+                                <GradientStop Color="#0B0D12" Offset="1"/>
+                            </LinearGradientBrush>
+                        </Border.Background>
+                    </Border>
+                    <Image x:Name="SpotlightImage" Stretch="UniformToFill"/>
+
+                    <!-- Video variant: muted, auto-looping. Loaded/unloaded per page so
+                         only the visible clip decodes. Same slot as the image. -->
+                    <MediaElement x:Name="SpotlightVideo" Stretch="UniformToFill"
+                                  LoadedBehavior="Manual" UnloadedBehavior="Stop"
+                                  Volume="0" IsMuted="True" Visibility="Collapsed"
+                                  MediaEnded="SpotlightVideo_MediaEnded"/>
+
+                    <TextBlock x:Name="SpotlightCaption" VerticalAlignment="Bottom"
+                               Background="#99000000" Padding="16,10" Foreground="#C7C9C3"
+                               FontSize="12" Text=""/>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- ============ GROUPED LIST: the "Also fixed" / maintenance layout ============ -->
+        <Grid x:Name="GroupedPage" Visibility="Collapsed" Margin="90,70,90,70">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <StackPanel Grid.Row="0">
+                <TextBlock x:Name="GroupedKicker" Text="ALSO IN THIS UPDATE" FontSize="12" FontWeight="Bold"
+                           Foreground="{DynamicResource Theme.AccentPrimaryBrush}"/>
+                <TextBlock x:Name="GroupedTitle" Text="Fixed and improved" FontSize="34" FontWeight="SemiBold"
+                           Foreground="#F2F4F0" Margin="0,8,0,0"/>
+            </StackPanel>
+
+            <!-- Two columns, grouped by kind. Fits without scrolling — that was the flaw
+                 in the original list. -->
+            <Grid Grid.Row="1" Margin="0,34,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel x:Name="FixedColumn" Grid.Column="0" Margin="0,0,28,0">
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                        <Border Background="#242E38" CornerRadius="4" Padding="7,3">
+                            <TextBlock Text="FIXED" FontSize="10" FontWeight="Bold" Foreground="#2EC8FF"/>
+                        </Border>
+                        <TextBlock x:Name="FixedCount" Text="3" FontSize="11" Foreground="#5A606A"
+                                   VerticalAlignment="Center" Margin="12,0,0,0"/>
+                    </StackPanel>
+                    <ItemsControl x:Name="FixedItems"/>
+                </StackPanel>
+
+                <StackPanel x:Name="ImprovedColumn" Grid.Column="1">
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                        <Border Background="#33291A" CornerRadius="4" Padding="7,3">
+                            <TextBlock Text="FASTER" FontSize="10" FontWeight="Bold" Foreground="#FFB43B"/>
+                        </Border>
+                        <TextBlock x:Name="ImprovedCount" Text="2" FontSize="11" Foreground="#5A606A"
+                                   VerticalAlignment="Center" Margin="12,0,0,0"/>
+                    </StackPanel>
+                    <ItemsControl x:Name="ImprovedItems"/>
+                </StackPanel>
+            </Grid>
+        </Grid>
+
+        <!-- ============ RECAP: the closing consolidated view ============
+             Shown automatically as the LAST page. Left: the illustrated features with
+             their clips still playing. Right: the remaining notes. Both at once — the
+             point is one final view of everything, not a rebuild of the pages before. -->
+        <Grid x:Name="RecapPage" Visibility="Collapsed" Margin="72,56,72,56">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <Grid Grid.Row="0" Margin="0,0,0,22">
+                <TextBlock x:Name="RecapKicker" Text="UPDATE RECAP" FontSize="12" FontWeight="Bold"
+                           Foreground="{DynamicResource Theme.AccentPrimaryBrush}"
+                           HorizontalAlignment="Left"/>
+                <TextBlock x:Name="RecapVersion" Text="Version 1.4.0" FontSize="12" FontWeight="Bold"
+                           Foreground="#5A606A" HorizontalAlignment="Right"/>
+            </Grid>
+
+            <Grid Grid.Row="1">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="1.3*"/>
+                    <ColumnDefinition Width="1*"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Features, each with its media. Built in code (up to three). -->
+                <StackPanel x:Name="RecapFeatures" Grid.Column="0" Margin="0,0,28,0"/>
+
+                <!-- Remaining notes -->
+                <StackPanel x:Name="RecapNotes" Grid.Column="1">
+                    <TextBlock x:Name="RecapNotesLabel" Text="ALSO IN THIS UPDATE" FontSize="10"
+                               FontWeight="Bold" Foreground="#4A505A" Margin="0,0,0,14"/>
+
+                    <StackPanel x:Name="RecapNewGroup" Margin="0,0,0,18">
+                        <Border Background="#1FA8E03B" CornerRadius="4" Padding="7,3" HorizontalAlignment="Left" Margin="0,0,0,8">
+                            <TextBlock Text="NEW" FontSize="9.5" FontWeight="Bold"
+                                       Foreground="{DynamicResource Theme.AccentPrimaryBrush}"/>
+                        </Border>
+                        <ItemsControl x:Name="RecapNewItems"/>
+                    </StackPanel>
+
+                    <StackPanel x:Name="RecapFasterGroup" Margin="0,0,0,18">
+                        <Border Background="#33291A" CornerRadius="4" Padding="7,3" HorizontalAlignment="Left" Margin="0,0,0,8">
+                            <TextBlock Text="FASTER" FontSize="9.5" FontWeight="Bold" Foreground="#FFB43B"/>
+                        </Border>
+                        <ItemsControl x:Name="RecapFasterItems"/>
+                    </StackPanel>
+
+                    <StackPanel x:Name="RecapFixedGroup">
+                        <Border Background="#242E38" CornerRadius="4" Padding="7,3" HorizontalAlignment="Left" Margin="0,0,0,8">
+                            <TextBlock Text="FIXED" FontSize="9.5" FontWeight="Bold" Foreground="#2EC8FF"/>
+                        </Border>
+                        <ItemsControl x:Name="RecapFixedItems"/>
+                    </StackPanel>
+                </StackPanel>
+            </Grid>
+        </Grid>
+
+        <!-- Footer: Done + navigation hint, shared across both layouts -->
+        <Grid VerticalAlignment="Bottom" Margin="90,0,90,44">
+            <TextBlock x:Name="NavHint" HorizontalAlignment="Left" VerticalAlignment="Center"
+                       FontSize="13" Foreground="#5A606A" Text="◀ ▶  Move        A  Next        B  Back"/>
+            <Border x:Name="DoneButton" HorizontalAlignment="Right" Cursor="Hand" CornerRadius="8"
+                    Padding="32,12" Background="{DynamicResource Theme.AccentPrimaryBrush}"
+                    MouseLeftButtonUp="Done_Click">
+                <TextBlock Text="Done" FontSize="15" FontWeight="SemiBold" Foreground="#06070B"/>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

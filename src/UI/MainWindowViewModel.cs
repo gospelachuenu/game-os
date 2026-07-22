@@ -21,6 +21,68 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     /// <summary>Every game, in on-screen left-to-right order. Left/Right moves focus; the hero mirrors the focused entry.</summary>
     public ObservableCollection<GameTileViewModel> Games { get; } = new();
 
+    /// <summary>
+    /// The app drawer — a second row beneath the games, for things that are not games.
+    /// Fixed for now (YouTube alone) but a collection so adding the next app is a list
+    /// entry rather than a layout change.
+    /// </summary>
+    public ObservableCollection<ConsoleApp> Apps { get; } =
+        new(ConsoleApp.BuiltIn);
+
+    /// <summary>Index of the highlighted app while the app row has focus.</summary>
+    private int _focusedAppIndex;
+
+    /// <summary>The highlighted app, or null when the drawer is empty.</summary>
+    public ConsoleApp? FocusedApp =>
+        _focusedAppIndex >= 0 && _focusedAppIndex < Apps.Count ? Apps[_focusedAppIndex] : null;
+
+    /// <summary>Moves the app highlight. Clamped — wrapping across a short row is disorienting.</summary>
+    public void MoveAppFocus(int delta)
+    {
+        if (Apps.Count == 0)
+        {
+            return;
+        }
+
+        _focusedAppIndex = Math.Clamp(_focusedAppIndex + delta, 0, Apps.Count - 1);
+        RefreshAppFocus();
+    }
+
+    /// <summary>Highlights a specific app — used when the mouse picks one directly.</summary>
+    public void FocusApp(ConsoleApp app)
+    {
+        var index = Apps.IndexOf(app);
+        if (index >= 0)
+        {
+            _focusedAppIndex = index;
+            RefreshAppFocus();
+        }
+    }
+
+    /// <summary>Applies or clears the app row's highlight.</summary>
+    public void RefreshAppFocus(bool rowHasFocus = true)
+    {
+        for (var i = 0; i < Apps.Count; i++)
+        {
+            Apps[i].IsFocused = rowHasFocus && i == _focusedAppIndex;
+        }
+    }
+
+    /// <summary>
+    /// Applies or clears the GAME row's highlight.
+    ///
+    /// Needed because moving focus along the row only ever hands the highlight from one
+    /// game to the next — nothing cleared it when focus left the row altogether, so
+    /// dropping down to the apps lit up both rows at once.
+    /// </summary>
+    public void RefreshGameFocus(bool rowHasFocus = true)
+    {
+        for (var i = 0; i < Games.Count; i++)
+        {
+            Games[i].IsFocused = rowHasFocus && i == _focusedIndex;
+        }
+    }
+
     public ObservableCollection<NavRailItemViewModel> RailItems { get; } = BuildRailItems();
 
     private static ObservableCollection<NavRailItemViewModel> BuildRailItems()

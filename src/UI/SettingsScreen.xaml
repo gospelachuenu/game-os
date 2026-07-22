@@ -110,6 +110,30 @@
                         </StackPanel>
                     </Border>
 
+                    <!-- Privacy. Unlike Display/Audio below, this section is REAL: it
+                         clears the microphone and other site permissions the browser has
+                         remembered. Needed because an "Allow" is persisted deliberately
+                         (so a page asks once, not every visit), which would otherwise be
+                         impossible to take back from inside the console. -->
+                    <Border Style="{StaticResource SectionCardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="PRIVACY" FontSize="11" FontWeight="Bold" Foreground="#6E6E7D" Margin="0,0,0,6"/>
+                            <TextBlock Text="Site Permissions" FontSize="18" FontWeight="Bold" Foreground="White" Margin="0,0,0,10"/>
+                            <TextBlock x:Name="PermissionSummary" FontSize="13.5" Foreground="#9A9AA8"
+                                       TextWrapping="Wrap" LineHeight="20" Margin="0,0,0,18"
+                                       Text="Websites that have been allowed to use the microphone."/>
+
+                            <Border x:Name="ResetPermissionsButton" Width="260" Height="46"
+                                    HorizontalAlignment="Left" CornerRadius="12"
+                                    Background="#14FFFFFF" BorderBrush="#2A2F3A" BorderThickness="1.5"
+                                    Cursor="Hand" MouseLeftButtonUp="ResetPermissions_Click">
+                                <TextBlock x:Name="ResetPermissionsLabel" Text="Revoke all permissions"
+                                           FontSize="14" FontWeight="SemiBold" Foreground="#E8EAE6"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                        </StackPanel>
+                    </Border>
+
                     <!-- Audio -->
                     <Border Style="{StaticResource SectionCardStyle}">
                         <StackPanel>
