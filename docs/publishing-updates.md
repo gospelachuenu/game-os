@@ -68,10 +68,19 @@ with resume) and the **real installer** (`UpdateInstaller`):
 2. Next boot, the console offers to install. Accepting unpacks the zip to a staging folder
    (validated — it must contain an .exe, or it is rejected before any swap).
 3. A small `.cmd` is launched and the console **exits**. The script waits for the process
-   to close, renames the live install aside, moves the new build into place, and relaunches.
-   A crash mid-swap leaves either the old or the new build, never a broken mixture.
-4. On the real appliance the script toggles UWF around the swap; on the VM (no filter) that
-   step is skipped automatically, so the same package works on both.
+   to close, renames the live install aside, moves the new build into place, and then
+   **reboots the machine**. A crash mid-swap leaves either the old or the new build, never
+   a broken mixture.
+4. The console comes back on the new build after the restart. The swap happens inside the
+   reboot's own black screen, so the user never sees the Windows shell — it reads as
+   "restarting to update", like a real console.
+5. On the real appliance the script toggles UWF around the swap; on the VM (no filter) that
+   step is skipped automatically, so the same package works on both. UWF also only re-arms
+   across a reboot, which is why rebooting to finish is required there anyway.
+
+**Testing tip:** set `GAMINGOS_UPDATE_RELAUNCH=1` on the VM to relaunch the app in place
+instead of rebooting, so you can test updates repeatedly without a full restart each time.
+Leave it unset on the real console for the clean reboot.
 
 With no manifest URL set, the windowed dev build simulates all of this — nothing is really
 replaced — so the flow stays demonstrable on the laptop.

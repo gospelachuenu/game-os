@@ -1910,7 +1910,13 @@ public partial class MainWindow : Window
         var exe = System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName
                   ?? System.IO.Path.Combine(AppContext.BaseDirectory, "UI.exe");
 
-        var launched = installer.ApplyStagedAndRelaunch(stageDir, exe);
+        // Reboot to finish, so the file swap happens inside the machine's own restart and
+        // the user never sees the Windows shell. Opt out with GAMINGOS_UPDATE_RELAUNCH=1
+        // to relaunch in place instead — for testing on the VM without rebooting each time.
+        var relaunchInPlace =
+            Environment.GetEnvironmentVariable("GAMINGOS_UPDATE_RELAUNCH") == "1";
+
+        var launched = installer.ApplyStagedAndRelaunch(stageDir, exe, reboot: !relaunchInPlace);
 
         if (!launched)
         {

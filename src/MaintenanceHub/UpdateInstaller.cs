@@ -87,9 +87,20 @@ public sealed class UpdateInstaller
     /// the console down, and the script relaunches it from the new build.
     /// </summary>
     /// <param name="stageDir">The directory returned by <see cref="StagePackage"/>.</param>
-    /// <param name="relaunchExe">The executable to start once the swap is done — usually the console's own.</param>
+    /// <param name="relaunchExe">The console executable — started after the swap if not rebooting.</param>
+    /// <param name="reboot">
+    /// When true, the machine restarts after the swap instead of relaunching the app.
+    ///
+    /// This is the better default on the real console and quietly nicer everywhere: the
+    /// file swap then happens during the reboot's own black screen, so the user never sees
+    /// the Windows shell between the old build closing and the new one starting — it simply
+    /// reads as "restarting to update". It is also REQUIRED on the appliance, where the
+    /// write filter only re-arms across a reboot (the third boot of the "three-boot
+    /// dance"). Relaunching in place is kept for the dev VM, where rebooting the whole
+    /// machine to test an update would be tedious.
+    /// </param>
     /// <returns>True if the swap process was launched; false if it could not be started.</returns>
-    public bool ApplyStagedAndRelaunch(string stageDir, string relaunchExe)
+    public bool ApplyStagedAndRelaunch(string stageDir, string relaunchExe, bool reboot = false)
     {
         if (!Directory.Exists(stageDir))
         {
@@ -99,7 +110,7 @@ public sealed class UpdateInstaller
         try
         {
             var scriptPath = Path.Combine(Path.GetTempPath(), $"gamingos-update-{Guid.NewGuid():N}.cmd");
-            File.WriteAllText(scriptPath, BuildSwapScript(stageDir, relaunchExe));
+            File.WriteAllText(scriptPath, BuildSwapScript(stageDir, relaunchExe, reboot));
 
             Process.Start(new ProcessStartInfo
             {
@@ -149,11 +160,17 @@ public sealed class UpdateInstaller
     /// UWF is toggled only if present, so the same script serves the dev VM (no filter)
     /// and the real appliance (filter on) without branching in the console.
     /// </summary>
-    private string BuildSwapScript(string stageDir, string relaunchExe)
+    private string BuildSwapScript(string stageDir, string relaunchExe, bool reboot)
     {
         var install = _installDir;
         var backup = install + ".old";
         var pid = Environment.ProcessId;
+
+        // Reboot hides the swap inside the machine's own restart; relaunch brings the app
+        // straight back in place (dev VM only, where a full reboot per test is tedious).
+        var finish = reboot
+            ? "shutdown /r /t 0"
+            : $"start \"\" \"{install}\\{Path.GetFileName(relaunchExe)}\"";
 
         // Every path is quoted: install folders and temp paths routinely contain spaces.
         return $"""
@@ -188,15 +205,19 @@ public sealed class UpdateInstaller
               move "{backup}" "{install}" >nul
             )
 
-            rem 4. Re-enable the write filter if we disabled it. This is where the second
-            rem    reboot of the "three-boot dance" comes in on the real appliance.
+            rem 4. Re-enable the write filter if we disabled it. On the appliance this
+            rem    takes effect on the reboot below — the third boot of the "three-boot
+            rem    dance".
             where uwfmgr >nul 2>nul && uwfmgr filter enable >nul 2>nul
 
-            rem 5. Relaunch the console from whatever is now in place.
-            start "" "{install}\{Path.GetFileName(relaunchExe)}"
-
-            rem 6. Clean up this script.
+            rem 5. Delete this script, THEN finish. (Done before the finish line because a
+            rem    reboot would never reach a line after it.)
             del "%~f0"
+
+            rem 6. Reboot, or relaunch in place — the swap is now done either way. A reboot
+            rem    hides the whole swap inside the machine's own restart, so the user never
+            rem    sees the shell between the old build and the new one.
+            {finish}
             """;
     }
 }
