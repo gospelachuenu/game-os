@@ -50,11 +50,31 @@ public partial class MainWindow : Window
             System.IO.Path.Combine(System.IO.Path.GetTempPath(), "console_state_ui_test"));
 
     /// <summary>
-    /// Console self-update. Simulated in this windowed build: a canned update source
-    /// and downloader rather than a real server. The check/download/install logic is
-    /// the real thing — only its edges are fake.
+    /// Console self-update.
+    ///
+    /// Reads a real GitHub-published version.json when <see cref="UpdateManifestUrl"/> is
+    /// configured; falls back to a simulated source otherwise, so the windowed dev build
+    /// still exercises the flow without a server. The check/download/install logic is the
+    /// same either way — only the source of "is there an update" changes.
     /// </summary>
     private readonly MaintenanceHub.SoftwareUpdateService _updates;
+
+    /// <summary>Shared for the update check; one per process.</summary>
+    private static readonly System.Net.Http.HttpClient _http = new()
+    {
+        Timeout = TimeSpan.FromSeconds(10),
+    };
+
+    /// <summary>
+    /// Where the console looks for its update manifest.
+    ///
+    /// Read from the GAMINGOS_UPDATE_MANIFEST environment variable so the URL can be set
+    /// per install without a rebuild — the real console sets it, the dev build usually
+    /// leaves it unset and gets the simulated source. Point it at the raw version.json,
+    /// e.g. https://github.com/<user>/<repo>/releases/latest/download/version.json.
+    /// </summary>
+    private static string? UpdateManifestUrl =>
+        Environment.GetEnvironmentVariable("GAMINGOS_UPDATE_MANIFEST");
 
     /// <summary>
     /// Parental controls. DORMANT unless this device has been set up as a child's
@@ -70,11 +90,35 @@ public partial class MainWindow : Window
         InitializeComponent();
 
         // Update service and parental controls share the one console state store.
+        //
+        // When a manifest URL is configured (the VM and the real console), use the REAL
+        // GitHub source and the REAL downloader — this is what makes an over-the-air
+        // update actually work. With no URL set (the windowed laptop build) fall back to
+        // the simulated pair so the flow can still be exercised without a server or a
+        // real package to fetch.
+        var manifestUrl = UpdateManifestUrl;
+        var isReal = !string.IsNullOrWhiteSpace(manifestUrl);
+
+        MaintenanceHub.IUpdateSource updateSource = isReal
+            ? new MaintenanceHub.GitHubUpdateSource(manifestUrl!, _http)
+            : new MaintenanceHub.SimulatedUpdateSource();
+
+        MaintenanceHub.IUpdateDownloader downloader = isReal
+            ? new MaintenanceHub.HttpUpdateDownloader(_http)
+            : new MaintenanceHub.SimulatedUpdateDownloader(TimeSpan.FromSeconds(20));
+
+        // Packages download next to the install so the swap script can reach them, and so
+        // a partial download resumes across reboots rather than restarting.
+        var downloadDir = System.IO.Path.Combine(
+            System.IO.Path.GetDirectoryName(
+                System.IO.Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory)) ?? AppContext.BaseDirectory,
+            "GamingOS-Updates");
+
         _updates = new MaintenanceHub.SoftwareUpdateService(
-            new MaintenanceHub.SimulatedUpdateSource(),
-            new MaintenanceHub.SimulatedUpdateDownloader(TimeSpan.FromSeconds(20)),
+            updateSource,
+            downloader,
             _consoleState,
-            System.IO.Path.Combine(System.IO.Path.GetTempPath(), "console_updates"));
+            downloadDir);
 
         _parental = new ParentalControls.ParentalControlsService(_consoleState);
 
@@ -1790,17 +1834,28 @@ public partial class MainWindow : Window
     /// <summary>
     /// Runs an install the user accepted from the boot screen.
     ///
-    /// SIMULATED in this windowed build — it steps a progress bar rather than
-    /// replacing any files. The real installer has to disable the write filter, apply
-    /// the package and re-enable it across three reboots, none of which can run on a
-    /// development machine.
+    /// Two paths. When a real package was downloaded (the VM and the console), it is
+    /// unpacked, a swap script is launched, and the console EXITS so the script can
+    /// replace its now-unlocked files and relaunch. When there is no real package (the
+    /// windowed laptop build), it falls back to stepping a progress bar so the screen can
+    /// still be exercised — there is nothing to actually install there.
     /// </summary>
     private async void Boot_InstallRequested(string version)
     {
-        // Recorded BEFORE the install starts, so a power cut midway still leaves the
+        // Recorded BEFORE anything is applied, so a power cut midway still leaves the
         // console knowing which version it came from.
         _updates.BeginInstall(version);
 
+        var packagePath = _updates.PendingPackagePath;
+        var haveRealPackage = !string.IsNullOrEmpty(packagePath) && System.IO.File.Exists(packagePath);
+
+        if (haveRealPackage)
+        {
+            await ApplyRealUpdateAsync(packagePath!);
+            return;
+        }
+
+        // No real package — simulate, so the flow is still demonstrable on the dev laptop.
         var steps = new (int Percent, string Caption)[]
         {
             (15, "Preparing…"),
@@ -1818,6 +1873,60 @@ public partial class MainWindow : Window
 
         await Task.Delay(400);
         Boot.CompleteInstall();
+    }
+
+    /// <summary>
+    /// Applies a downloaded package for real: unpack, hand off to the swap script, exit.
+    ///
+    /// The swap cannot happen from inside this process — a running program cannot
+    /// overwrite its own files — so the last thing done here is quit and let the script
+    /// take over. The unpacking (the slow, failure-prone part) is done FIRST, while the
+    /// console is still up and can show an honest error, rather than after it has quit.
+    /// </summary>
+    private async Task ApplyRealUpdateAsync(string packagePath)
+    {
+        var installer = new MaintenanceHub.UpdateInstaller();
+
+        Boot.ReportInstallProgress(20, "Unpacking…");
+
+        // Unpacking is CPU/disk work; keep it off the UI thread so the progress bar the
+        // user is watching does not freeze mid-install.
+        var stageDir = await Task.Run(() => installer.StagePackage(packagePath));
+
+        if (stageDir is null)
+        {
+            // Package was corrupt or truncated. Discard it so the next boot re-downloads
+            // rather than trying to install the same broken file again.
+            _updates.DiscardPending();
+            Boot.ReportInstallProgress(0, "Update failed — will retry next boot");
+            await Task.Delay(2500);
+            Boot.CompleteInstall();
+            return;
+        }
+
+        Boot.ReportInstallProgress(70, "Applying…");
+        await Task.Delay(500);
+
+        var exe = System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName
+                  ?? System.IO.Path.Combine(AppContext.BaseDirectory, "UI.exe");
+
+        var launched = installer.ApplyStagedAndRelaunch(stageDir, exe);
+
+        if (!launched)
+        {
+            _updates.DiscardPending();
+            Boot.ReportInstallProgress(0, "Update failed — will retry next boot");
+            await Task.Delay(2500);
+            Boot.CompleteInstall();
+            return;
+        }
+
+        Boot.ReportInstallProgress(100, "Restarting…");
+        await Task.Delay(800);
+
+        // Hand the screen to the swap script and get out of its way — it is waiting on
+        // this process to exit before it can replace the files.
+        Application.Current.Shutdown();
     }
 
     private System.Windows.Threading.DispatcherTimer? _updatedToastTimer;
