@@ -16,3 +16,7 @@ obj/
 
 # Local test database (regenerated on run by SampleLibrarySeeder)
 *.db
+
+# Published build output and update packages (large binaries)
+publish/v*/
+publish/*.zip

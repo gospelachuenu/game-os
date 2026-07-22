@@ -1,0 +1,12 @@
+{
+  "version": "1.1.0",
+  "packageUrl": "https://github.com/YOUR-USER/YOUR-REPO/releases/download/v1.1.0/UI-1.1.0.zip",
+  "sizeBytes": 102792195,
+  "notes": [
+    { "kind": "New", "text": "The web browser and YouTube are back — reach them from the apps row and the Web button on the rail." },
+    { "kind": "New", "text": "Play music from YouTube and it keeps going in the background while you use the console." },
+    { "kind": "New", "text": "An on-screen keyboard for typing web addresses with the controller — press up from the browser's start screen." },
+    { "kind": "Improved", "text": "YouTube and the browser now run independently, so opening the browser no longer stops your music." },
+    { "kind": "Fixed", "text": "Ordinary websites no longer load in a stretched TV layout." }
+  ]
+}
