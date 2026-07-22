@@ -48,6 +48,12 @@ public sealed class SoftwareUpdateService
     /// <summary>True when an update was installed and its notes have not been shown yet.</summary>
     public bool HasUnseenUpdateNotes => _checker.HasUnseenUpdateNotes;
 
+    /// <summary>
+    /// The patch notes for the just-installed update — the real ones from its manifest,
+    /// saved at download and restored here. Empty if the update carried none.
+    /// </summary>
+    public IReadOnlyList<PatchNoteBlock> InstalledNotes => _checker.InstalledNotes;
+
     /// <summary>The most recent check's result, or null if no check has run this session.</summary>
     public UpdateCheckResult? LastResult { get; private set; }
 

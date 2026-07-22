@@ -2077,8 +2077,19 @@ public partial class MainWindow : Window
         // so they appear exactly once per version.
         _updates.MarkNotesSeen();
 
-        var release = MaintenanceHub.SimulatedUpdateSource.SampleRelease;
-        PatchNotes.Show(release.Version, release.Notes, packageDirectory: null);
+        // The REAL notes from the update that just installed — saved at download time and
+        // restored here. Falls back to the sample only if the update carried none, so a
+        // notes-less manifest still shows something rather than an empty screen.
+        var notes = _updates.InstalledNotes;
+        if (notes.Count > 0)
+        {
+            PatchNotes.Show(_updates.InstalledVersion, notes, packageDirectory: null);
+        }
+        else
+        {
+            var sample = MaintenanceHub.SimulatedUpdateSource.SampleRelease;
+            PatchNotes.Show(_updates.InstalledVersion, sample.Notes, packageDirectory: null);
+        }
     }
 
     private void DismissUpdated_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
