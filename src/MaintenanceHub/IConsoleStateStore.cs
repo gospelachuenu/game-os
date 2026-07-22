@@ -65,6 +65,15 @@ public static class ConsoleStateKeys
     /// </summary>
     public const string UpdateNotesUnseen = "software.notes_unseen";
 
+    /// <summary>
+    /// The patch notes for the pending/just-installed update, as JSON.
+    ///
+    /// Stored because the notes arrive with the DOWNLOAD but are shown after the INSTALL,
+    /// a boot later — the release object is long gone by then, so without persisting them
+    /// the "what's new" screen has nothing real to display.
+    /// </summary>
+    public const string UpdateNotesJson = "software.notes_json";
+
     /// <summary>Marks first-run setup as complete.</summary>
     public const string SetupComplete = "setup.complete";
 

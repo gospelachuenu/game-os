@@ -134,6 +134,38 @@ public sealed class SoftwareUpdateChecker
     {
         _state.Set(ConsoleStateKeys.PendingVersion, release.Version);
         _state.Set(ConsoleStateKeys.PendingPackagePath, packagePath);
+
+        // Keep the notes now, while we still have them — they are shown a boot later,
+        // after the install, by which point the release object is gone.
+        _state.Set(ConsoleStateKeys.UpdateNotesJson,
+            System.Text.Json.JsonSerializer.Serialize(release.Notes));
+    }
+
+    /// <summary>
+    /// The patch notes for the just-installed update, restored from what was saved at
+    /// download time. Empty if none were stored (a manifest without notes, or an update
+    /// from before notes were persisted).
+    /// </summary>
+    public IReadOnlyList<PatchNoteBlock> InstalledNotes
+    {
+        get
+        {
+            var json = _state.Get(ConsoleStateKeys.UpdateNotesJson);
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                return Array.Empty<PatchNoteBlock>();
+            }
+
+            try
+            {
+                return System.Text.Json.JsonSerializer
+                    .Deserialize<List<PatchNoteBlock>>(json) ?? new List<PatchNoteBlock>();
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                return Array.Empty<PatchNoteBlock>();
+            }
+        }
     }
 
     /// <summary>

@@ -350,6 +350,21 @@ public partial class PatchNotesScreen : UserControl
         };
         grid.Children.Add(fallback);
 
+        // A built animation, rather than a file: render live vector motion in the
+        // console's own style. No file to load, resolve, or ship.
+        if (PatchNoteAnimations.IsAnimation(item.MediaPath))
+        {
+            var anim = PatchNoteAnimations.Build(item.MediaPath!);
+            if (anim is not null)
+            {
+                grid.Children.Add(anim);
+                fallback.Visibility = Visibility.Collapsed;
+            }
+
+            host.Child = grid;
+            return host;
+        }
+
         var full = ResolveInPackage(item.MediaPath);
         if (full is not null)
         {
