@@ -20,7 +20,7 @@
          itself (UI.exe's file version, and BuildInfo.Version below) rather than every
          build reporting 1.0.0.0 — which made it impossible to tell yesterday whether an
          update had actually swapped the files. -->
-    <Version>1.1.0</Version>
+    <Version>1.2.0</Version>
   </PropertyGroup>
 
   <ItemGroup>
