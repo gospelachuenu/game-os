@@ -15,6 +15,12 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+
+    <!-- The build's own version. Bump this for every release so a build can identify
+         itself (UI.exe's file version, and BuildInfo.Version below) rather than every
+         build reporting 1.0.0.0 — which made it impossible to tell yesterday whether an
+         update had actually swapped the files. -->
+    <Version>1.1.0</Version>
   </PropertyGroup>
 
   <ItemGroup>

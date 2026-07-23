@@ -46,8 +46,34 @@ public partial class MainWindow : Window
     /// tested.
     /// </summary>
     private readonly MaintenanceHub.IConsoleStateStore _consoleState =
-        new MaintenanceHub.FileConsoleStateStore(
-            System.IO.Path.Combine(System.IO.Path.GetTempPath(), "console_state_ui_test"));
+        new MaintenanceHub.FileConsoleStateStore(ResolveStateDirectory());
+
+    /// <summary>
+    /// Where console state lives.
+    ///
+    /// On a REAL install (running from C:\GamingOS) this MUST be C:\GamingOS\State — the
+    /// UWF write-through-excluded folder — or every reboot silently discards the pending
+    /// update, the parent PIN, everything. Using %TEMP% here was the cause of updates
+    /// "reverting": the state recording the pending install evaporated across the reboot,
+    /// so the console forgot it had an update to apply.
+    ///
+    /// Only the pure windowed dev build (running from bin\ or a publish folder that is not
+    /// the console install) falls back to %TEMP%, so a developer's machine is not writing
+    /// to C:\GamingOS.
+    /// </summary>
+    private static string ResolveStateDirectory()
+    {
+        var baseDir = System.IO.Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory);
+
+        // Running as the installed console: use the real, UWF-safe state folder.
+        if (baseDir.StartsWith(@"C:\GamingOS", StringComparison.OrdinalIgnoreCase))
+        {
+            return MaintenanceHub.FileConsoleStateStore.DefaultDirectory;
+        }
+
+        // Dev/windowed build: keep state out of the way in temp.
+        return System.IO.Path.Combine(System.IO.Path.GetTempPath(), "console_state_ui_test");
+    }
 
     /// <summary>
     /// Console self-update.
@@ -83,6 +109,7 @@ public partial class MainWindow : Window
     /// under restrictions.
     /// </summary>
     private readonly ParentalControls.ParentalControlsService _parental;
+    private MaintenanceHub.UwfUpdateCoordinator _uwf = null!;
 
 
     public MainWindow()
@@ -114,12 +141,11 @@ public partial class MainWindow : Window
             ? new MaintenanceHub.HttpUpdateDownloader(_http)
             : new MaintenanceHub.SimulatedUpdateDownloader(TimeSpan.FromSeconds(20));
 
-        // Packages download next to the install so the swap script can reach them, and so
-        // a partial download resumes across reboots rather than restarting.
-        var downloadDir = System.IO.Path.Combine(
-            System.IO.Path.GetDirectoryName(
-                System.IO.Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory)) ?? AppContext.BaseDirectory,
-            "GamingOS-Updates");
+        // Packages download INTO the UWF-excluded state tree, so a completed download —
+        // and the pending-install record — survive the reboot between downloading and
+        // installing. Anywhere else and the write filter discards the package, and the
+        // console re-downloads forever (or forgets the update entirely).
+        var downloadDir = System.IO.Path.Combine(ResolveStateDirectory(), "Updates");
 
         _updates = new MaintenanceHub.SoftwareUpdateService(
             updateSource,
@@ -128,6 +154,10 @@ public partial class MainWindow : Window
             downloadDir);
 
         _parental = new ParentalControls.ParentalControlsService(_consoleState);
+
+        // Drives an update across the reboots UWF forces. On a machine without a write
+        // filter its steps no-op and updates apply in a single reboot.
+        _uwf = new MaintenanceHub.UwfUpdateCoordinator(_consoleState);
 
         // Constructing the view model IS the library work — schema, seed and scan all
         // happen synchronously in there — so by the time it returns that step is
@@ -1806,6 +1836,15 @@ public partial class MainWindow : Window
     /// </summary>
     private async Task CheckForSoftwareUpdateAsync()
     {
+        // BOOT B of the UWF dance. If a previous boot disabled UWF and asked us to apply
+        // an update, this is that next boot — the filter is now genuinely off, so the file
+        // swap will persist. Do it before anything else, because it ends in a reboot.
+        if (_uwf.CurrentStage == MaintenanceHub.UwfUpdateCoordinator.Stage.ApplyAfterReboot)
+        {
+            await ApplyPendingSwapAsync();
+            return;
+        }
+
         var result = await _updates.CheckAsync();
 
         // Reported regardless of the outcome. A failed check is a normal event — no
@@ -1897,62 +1936,116 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Applies a downloaded package for real: unpack, hand off to the swap script, exit.
+    /// BOOT A of the update. Prepares the machine and reboots — it does NOT swap files
+    /// yet.
     ///
-    /// The swap cannot happen from inside this process — a running program cannot
-    /// overwrite its own files — so the last thing done here is quit and let the script
-    /// take over. The unpacking (the slow, failure-prone part) is done FIRST, while the
-    /// console is still up and can show an honest error, rather than after it has quit.
+    /// The swap cannot happen on this boot when UWF is on: UWF's disable only takes effect
+    /// after a restart, so any file written now is discarded on reboot — which is exactly
+    /// why an update "installed" and then vanished. So this boot disables UWF, records that
+    /// the NEXT boot should apply the swap, and reboots. Boot B (see
+    /// <see cref="ApplyPendingSwapAsync"/>) does the actual swap with the filter genuinely
+    /// off.
+    ///
+    /// On a machine with no UWF this still records the stage and reboots, so there is one
+    /// path — the dance simply completes in fewer meaningful steps.
     /// </summary>
     private async Task ApplyRealUpdateAsync(string packagePath)
     {
-        var installer = new MaintenanceHub.UpdateInstaller();
+        Boot.ReportInstallProgress(30, "Preparing…");
 
-        Boot.ReportInstallProgress(20, "Unpacking…");
+        // Disable the write filter (if any) and mark that the next boot applies the swap.
+        // The marker lives in the UWF-excluded state folder, so it survives the reboot.
+        _uwf.BeginApply(ResolveStateDirectory());
 
-        // Unpacking is CPU/disk work; keep it off the UI thread so the progress bar the
-        // user is watching does not freeze mid-install.
-        var stageDir = await Task.Run(() => installer.StagePackage(packagePath));
+        await Task.Delay(600);
 
-        if (stageDir is null)
+        // A machine with no write filter can apply immediately on the coming boot; one
+        // with UWF needs this reboot for the disable to take effect first. Either way the
+        // work happens on the next boot, keeping a single code path.
+        Boot.ReportInstallProgress(100, "Restarting to update…");
+        await Task.Delay(900);
+
+        RebootOrRelaunch();
+    }
+
+    /// <summary>
+    /// BOOT B. UWF is now genuinely off, so the file swap will persist. Unpack the staged
+    /// package, hand off to the swap script, re-enable UWF, and exit for the script to
+    /// finish — which reboots into the new build (Boot C).
+    /// </summary>
+    private async Task ApplyPendingSwapAsync()
+    {
+        Boot.Report(BootStep.UpdateChecked);
+
+        var packagePath = _updates.PendingPackagePath;
+        if (string.IsNullOrEmpty(packagePath) || !System.IO.File.Exists(packagePath))
         {
-            // Package was corrupt or truncated. Discard it so the next boot re-downloads
-            // rather than trying to install the same broken file again.
-            _updates.DiscardPending();
-            Boot.ReportInstallProgress(0, "Update failed — will retry next boot");
-            await Task.Delay(2500);
-            Boot.CompleteInstall();
+            // Nothing to apply — the package went missing. Abandon the dance cleanly
+            // rather than looping: re-arm the filter and carry on booting.
+            _uwf.Abort();
             return;
         }
 
-        Boot.ReportInstallProgress(70, "Applying…");
-        await Task.Delay(500);
+        var installer = new MaintenanceHub.UpdateInstaller();
+
+        var stageDir = await Task.Run(() => installer.StagePackage(packagePath));
+        if (stageDir is null)
+        {
+            _updates.DiscardPending();
+            _uwf.Abort();
+            return;
+        }
+
+        // Re-arm the write filter for after the swap, and clear the resume marker so a
+        // failed swap does not loop the dance forever. Done BEFORE launching the swap
+        // script: once we exit, this process cannot run anything more.
+        _uwf.FinishApply();
 
         var exe = System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName
                   ?? System.IO.Path.Combine(AppContext.BaseDirectory, "UI.exe");
 
-        // Reboot to finish, so the file swap happens inside the machine's own restart and
-        // the user never sees the Windows shell. Opt out with GAMINGOS_UPDATE_RELAUNCH=1
-        // to relaunch in place instead — for testing on the VM without rebooting each time.
-        var relaunchInPlace =
-            Environment.GetEnvironmentVariable("GAMINGOS_UPDATE_RELAUNCH") == "1";
-
+        var relaunchInPlace = Environment.GetEnvironmentVariable("GAMINGOS_UPDATE_RELAUNCH") == "1";
         var launched = installer.ApplyStagedAndRelaunch(stageDir, exe, reboot: !relaunchInPlace);
 
         if (!launched)
         {
             _updates.DiscardPending();
-            Boot.ReportInstallProgress(0, "Update failed — will retry next boot");
-            await Task.Delay(2500);
-            Boot.CompleteInstall();
             return;
         }
 
-        Boot.ReportInstallProgress(100, "Restarting…");
-        await Task.Delay(800);
+        // Out of the way so the swap script can replace the now-unlocked files.
+        Application.Current.Shutdown();
+    }
 
-        // Hand the screen to the swap script and get out of its way — it is waiting on
-        // this process to exit before it can replace the files.
+    /// <summary>Reboots, or relaunches in place when GAMINGOS_UPDATE_RELAUNCH=1 (VM testing).</summary>
+    private void RebootOrRelaunch()
+    {
+        if (Environment.GetEnvironmentVariable("GAMINGOS_UPDATE_RELAUNCH") == "1")
+        {
+            // Relaunch this same exe instead of rebooting — but with UWF the disable needs
+            // a real reboot to take effect, so relaunch-in-place is only honest on a
+            // machine WITHOUT a filter. With UWF present, reboot regardless.
+            if (!MaintenanceHub.UwfUpdateCoordinator.UwfPresent())
+            {
+                var exe = System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName;
+                if (exe is not null)
+                {
+                    System.Diagnostics.Process.Start(exe);
+                }
+
+                Application.Current.Shutdown();
+                return;
+            }
+        }
+
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = "shutdown",
+            Arguments = "/r /t 0",
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        });
+
         Application.Current.Shutdown();
     }
 

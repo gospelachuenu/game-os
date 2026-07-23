@@ -74,6 +74,12 @@ public static class ConsoleStateKeys
     /// </summary>
     public const string UpdateNotesJson = "software.notes_json";
 
+    /// <summary>
+    /// Where an in-progress UWF update dance has got to across reboots ("apply" = the
+    /// next boot should apply the swap). Absent when no update is mid-flight.
+    /// </summary>
+    public const string UwfUpdateStage = "software.uwf_stage";
+
     /// <summary>Marks first-run setup as complete.</summary>
     public const string SetupComplete = "setup.complete";
 

@@ -59,6 +59,14 @@ if exist "C:\GamingOS\UI.dll"     for %%F in ("C:\GamingOS\UI.dll")     do echo 
 if exist "C:\GamingOS.bak\UI.dll" for %%F in ("C:\GamingOS.bak\UI.dll") do echo       GamingOS.bak %%~zF bytes  %%~tF
 echo.
 
+echo   [5e] Update swap log from last attempt (if any):
+if exist "C:\gamingos-update.log" (
+  type "C:\gamingos-update.log"
+) else (
+  echo       no log yet - the build on this VM predates logging
+)
+echo.
+
 echo   [6] Write filter (UWF) state:
 where uwfmgr >nul 2>nul
 if errorlevel 1 (
