@@ -163,61 +163,80 @@ public sealed class UpdateInstaller
     private string BuildSwapScript(string stageDir, string relaunchExe, bool reboot)
     {
         var install = _installDir;
-        var backup = install + ".old";
+        // A backup name unique to THIS swap, so it cannot collide with a leftover .bak/.old
+        // from a manual bootstrap or a previous update — a collision there was silently
+        // failing the move and rolling back to the old build.
+        var backup = install + ".prev-" + Guid.NewGuid().ToString("N")[..8];
         var pid = Environment.ProcessId;
+        var exeName = Path.GetFileName(relaunchExe);
 
-        // Reboot hides the swap inside the machine's own restart; relaunch brings the app
-        // straight back in place (dev VM only, where a full reboot per test is tedious).
+        // A log the swap writes as it runs, so a failed update can be diagnosed from what
+        // it ACTUALLY did rather than inferred from the aftermath. Beside the install, not
+        // in temp, so it survives even if temp is cleared.
+        var log = Path.Combine(
+            Path.GetDirectoryName(install.TrimEnd('\\')) ?? "C:\\", "gamingos-update.log");
+
         var finish = reboot
             ? "shutdown /r /t 0"
-            : $"start \"\" \"{install}\\{Path.GetFileName(relaunchExe)}\"";
+            : $"start \"\" \"{install}\\{exeName}\"";
 
         // Every path is quoted: install folders and temp paths routinely contain spaces.
-        return $"""
+        return $$"""
             @echo off
-            rem --- Gaming OS update swap. Generated; safe to delete after it runs. ---
+            set LOG="{{log}}"
+            echo ================================================= > %LOG%
+            echo Gaming OS update swap  %DATE% %TIME% >> %LOG%
+            echo install = {{install}} >> %LOG%
+            echo stage   = {{stageDir}} >> %LOG%
+            echo backup  = {{backup}} >> %LOG%
 
-            rem 1. Wait for the console to actually exit, so its files unlock. Poll its PID
-            rem    rather than a fixed sleep, which would race a slow shutdown.
+            rem 1. Wait for the console to fully exit so its files unlock.
             :waitloop
-            tasklist /fi "PID eq {pid}" 2>nul | find "{pid}" >nul
+            tasklist /fi "PID eq {{pid}}" 2>nul | find "{{pid}}" >nul
             if not errorlevel 1 (
               timeout /t 1 /nobreak >nul
               goto waitloop
             )
+            echo [1] console exited >> %LOG%
 
-            rem 2. Disable the write filter if this machine has one, so the swap survives a
-            rem    reboot. Absent (the dev VM), this line simply fails and is ignored.
-            where uwfmgr >nul 2>nul && uwfmgr filter disable >nul 2>nul
+            rem 2. Write filter off if present. On the appliance this needs the reboot below
+            rem    to take full effect, but disabling here still lets the swap write through
+            rem    for this session.
+            where uwfmgr >nul 2>nul && (uwfmgr filter disable >> %LOG% 2>&1 & echo [2] uwf disable attempted >> %LOG%)
 
-            rem 3. Swap. Move the live install aside, put the new build in its place, and
-            rem    only delete the old one once the new one is confirmed present. A crash
-            rem    at any point leaves a startable install.
-            if exist "{backup}" rmdir /s /q "{backup}"
-            move "{install}" "{backup}" >nul
-            move "{stageDir}" "{install}" >nul
+            rem 3. Verify the staged build is real BEFORE touching the live install. If the
+            rem    stage is missing we must not move the install aside, or we would be left
+            rem    with nothing.
+            if not exist "{{stageDir}}\{{exeName}}" (
+              echo [3] ABORT: staged build missing, install untouched >> %LOG%
+              goto finish
+            )
+            echo [3] staged build present >> %LOG%
 
-            if exist "{install}\{Path.GetFileName(relaunchExe)}" (
-              rmdir /s /q "{backup}"
+            rem 4. Swap: install -> backup, stage -> install.
+            move "{{install}}" "{{backup}}" >> %LOG% 2>&1
+            echo [4a] moved install to backup >> %LOG%
+            move "{{stageDir}}" "{{install}}" >> %LOG% 2>&1
+            echo [4b] moved stage to install >> %LOG%
+
+            rem 5. Confirm the NEW build landed. If it did not, roll the old one back so the
+            rem    console still starts.
+            if exist "{{install}}\{{exeName}}" (
+              echo [5] SUCCESS: new build in place >> %LOG%
+              rmdir /s /q "{{backup}}" >nul 2>nul
             ) else (
-              rem New build did not land — roll back to the old one so the console still runs.
-              if exist "{install}" rmdir /s /q "{install}"
-              move "{backup}" "{install}" >nul
+              echo [5] FAILED: new build not in place, rolling back >> %LOG%
+              if exist "{{install}}" rmdir /s /q "{{install}}" >nul 2>nul
+              move "{{backup}}" "{{install}}" >> %LOG% 2>&1
             )
 
-            rem 4. Re-enable the write filter if we disabled it. On the appliance this
-            rem    takes effect on the reboot below — the third boot of the "three-boot
-            rem    dance".
-            where uwfmgr >nul 2>nul && uwfmgr filter enable >nul 2>nul
+            rem 6. Write filter back on if we turned it off.
+            where uwfmgr >nul 2>nul && (uwfmgr filter enable >> %LOG% 2>&1 & echo [6] uwf enable attempted >> %LOG%)
 
-            rem 5. Delete this script, THEN finish. (Done before the finish line because a
-            rem    reboot would never reach a line after it.)
+            :finish
+            echo [7] finishing: {{finish}} >> %LOG%
             del "%~f0"
-
-            rem 6. Reboot, or relaunch in place — the swap is now done either way. A reboot
-            rem    hides the whole swap inside the machine's own restart, so the user never
-            rem    sees the shell between the old build and the new one.
-            {finish}
+            {{finish}}
             """;
     }
 }
