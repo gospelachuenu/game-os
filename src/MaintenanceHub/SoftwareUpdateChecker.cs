@@ -74,6 +74,9 @@ public sealed class SoftwareUpdateChecker
 
     public string? PreviousVersion => _state.Get(ConsoleStateKeys.PreviousVersion);
 
+    /// <summary>The version downloaded and waiting to install, or null if none.</summary>
+    public string? PendingVersion => _state.Get(ConsoleStateKeys.PendingVersion);
+
     /// <summary>
     /// Runs the boot check. Never throws: every failure path resolves to CheckFailed,
     /// because nothing here is worth stopping a boot for.

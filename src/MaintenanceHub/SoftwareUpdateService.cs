@@ -39,6 +39,13 @@ public sealed class SoftwareUpdateService
     public string? PreviousVersion => _checker.PreviousVersion;
 
     /// <summary>
+    /// The version downloaded and waiting to install. Read in Boot B of the UWF dance to
+    /// stamp the install once the swap is actually happening — not before, on Boot A,
+    /// where recording it would lie if the swap then failed.
+    /// </summary>
+    public string? PendingVersion => _checker.PendingVersion;
+
+    /// <summary>
     /// The downloaded package waiting to be installed, or null if none is ready. Set when
     /// a download completes; read by the installer to know what to unpack.
     /// </summary>

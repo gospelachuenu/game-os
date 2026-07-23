@@ -1,7 +1,7 @@
 {
   "version": "1.2.0",
   "packageUrl": "https://github.com/gospelachuenu/game-os/releases/download/v1.2.0/UI-1.2.0.zip",
-  "sizeBytes": 102800939,
+  "sizeBytes": 102801074,
   "notes": [
     { "kind": "New", "text": "The web browser is back", "image": "anim:browser" },
     { "kind": "New", "text": "Play music that keeps going in the background", "image": "anim:music" },

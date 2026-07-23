@@ -23,7 +23,7 @@ if errorlevel 1 (
   exit /b 1
 )
 
-set "SRC=\\vboxsvr\publish\v1.0.0"
+set "SRC=\\vboxsvr\publish\v1.1.0-bootstrap"
 set "DST=C:\GamingOS"
 set "REPO=gospelachuenu/game-os"
 

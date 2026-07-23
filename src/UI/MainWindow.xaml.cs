@@ -1902,18 +1902,23 @@ public partial class MainWindow : Window
     /// </summary>
     private async void Boot_InstallRequested(string version)
     {
-        // Recorded BEFORE anything is applied, so a power cut midway still leaves the
-        // console knowing which version it came from.
-        _updates.BeginInstall(version);
-
         var packagePath = _updates.PendingPackagePath;
         var haveRealPackage = !string.IsNullOrEmpty(packagePath) && System.IO.File.Exists(packagePath);
 
         if (haveRealPackage)
         {
+            // NOTE: the version is NOT recorded as installed here. The swap happens on a
+            // LATER boot (the UWF dance), so stamping "installed 1.2.0" now would be a lie
+            // if the swap then failed — which is exactly how yesterday's state ended up
+            // claiming a version the disk did not have. Boot B records it from the
+            // persisted PendingVersion, only once the swap has been handed off.
             await ApplyRealUpdateAsync(packagePath!);
             return;
         }
+
+        // No real package — simulate on the dev laptop. Here the "install" is instant, so
+        // recording it now is honest.
+        _updates.BeginInstall(version);
 
         // No real package — simulate, so the flow is still demonstrable on the dev laptop.
         var steps = new (int Percent, string Caption)[]
@@ -1994,6 +1999,16 @@ public partial class MainWindow : Window
             _updates.DiscardPending();
             _uwf.Abort();
             return;
+        }
+
+        // Record the install NOW — the swap is about to be handed to the script and this
+        // is the last honest moment. Reads the version from persisted state (the field
+        // from Boot A did not survive the reboot). This also stamps the notes-unseen flag,
+        // so the new build shows its patch notes on first launch.
+        var installingVersion = _updates.PendingVersion;
+        if (!string.IsNullOrEmpty(installingVersion))
+        {
+            _updates.BeginInstall(installingVersion);
         }
 
         // Re-arm the write filter for after the swap, and clear the resume marker so a
